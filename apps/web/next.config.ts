@@ -10,8 +10,8 @@ const nextConfig: NextConfig = {
 export default withSentryConfig(nextConfig, {
   org: process.env.SENTRY_ORG_SLUG,
   project: process.env.SENTRY_PROJECT_SLUG,
-  authToken: process.env.SOURCE_MAP_AUTH_TOKEN,
-  sourcemaps: { disable: false, deleteSourcemapsAfterUpload: false },
+  // The npm build wrapper uploads once, then waits for server-side processing.
+  sourcemaps: { disable: "disable-upload", deleteSourcemapsAfterUpload: false },
   release: { name: process.env.SENTRY_RELEASE, create: false, finalize: false },
   silent: true,
   telemetry: false,

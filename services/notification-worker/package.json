@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc && sentry-cli sourcemaps inject dist",
+    "build": "node ../../scripts/build-source-maps.mjs notification-worker",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",

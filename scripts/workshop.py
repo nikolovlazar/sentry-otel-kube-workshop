@@ -104,6 +104,7 @@ def doctor():
         if str(KUBECONFIG) not in cmd or 'port-forward' not in cmd:raise SystemExit('localhost8080 is not the workshop managed forward.')
     print('localhost8080 available or owned by the workshop forward')
     require(['POSTGRES_PASSWORD','CATALOG_DB_PASSWORD','FULFILLMENT_DB_PASSWORD','REDIS_PASSWORD','SENTRY_ORG_SLUG','SENTRY_BASE_URL']+['SENTRY_DSN_'+x for x in ['WEB','CATALOG','FULFILLMENT','WORKER','INFRASTRUCTURE']])
+    require(['SENTRY_SOURCE_MAP_AUTH_TOKEN'])
     if CFG['SENTRY_EXPORTER_MODE']=='sentry':require(['SENTRY_AUTH_TOKEN'])
     for suffix in ['WEB','CATALOG','FULFILLMENT','WORKER','INFRASTRUCTURE']:
         dsn=urlparse(CFG['SENTRY_DSN_'+suffix])
@@ -163,10 +164,27 @@ def configure():
     apply_file(ROOT/'infra/kubernetes/namespaces-rbac.json');secrets();collector_config();validate_config()
 
 def build():
-    for name,directory in COMPONENTS.items():
-        dockerfile=ROOT/directory/'Dockerfile'
-        if not dockerfile.exists():raise SystemExit('Missing '+str(dockerfile))
-        run(['docker','build','--build-arg','SENTRY_RELEASE='+CFG['SENTRY_RELEASE'],'-t','workshop/'+name+':local','-f',dockerfile,'.'])
+    require(['SENTRY_SOURCE_MAP_AUTH_TOKEN','SENTRY_ORG_SLUG','SENTRY_BASE_URL','SENTRY_RELEASE'])
+    # Secret contents do not invalidate BuildKit cache. Run the authenticated upload on every build.
+    upload_nonce=uuid.uuid4().hex
+    token_path=GENERATED/('source-map-upload-token-'+upload_nonce)
+    private_write(token_path,CFG['SENTRY_SOURCE_MAP_AUTH_TOKEN'])
+    try:
+        for name,directory in COMPONENTS.items():
+            dockerfile=ROOT/directory/'Dockerfile'
+            if not dockerfile.exists():raise SystemExit('Missing '+str(dockerfile))
+            args=['docker','build','--build-arg','SENTRY_RELEASE='+CFG['SENTRY_RELEASE']]
+            if name in ['web','notification-worker']:
+                project='sentry-otel-workshop-'+('web' if name=='web' else 'worker')
+                args.extend(['--secret','id=sentry_source_map_token,src='+str(token_path),
+                    '--build-arg','SENTRY_ORG_SLUG='+CFG['SENTRY_ORG_SLUG'],
+                    '--build-arg','SENTRY_PROJECT_SLUG='+project,
+                    '--build-arg','SENTRY_BASE_URL='+CFG['SENTRY_BASE_URL'],
+                    '--build-arg','SENTRY_BUILD_UPLOAD_REQUIRED=1',
+                    '--build-arg','SENTRY_BUILD_UPLOAD_NONCE='+upload_nonce])
+            run([*args,'-t','workshop/'+name+':local','-f',dockerfile,'.'],env={**ENV,'DOCKER_BUILDKIT':'1'})
+    finally:
+        token_path.unlink(missing_ok=True)
     run([BIN/'kind','load','docker-image',*['workshop/'+name+':local' for name in COMPONENTS],'--name',CLUSTER])
 
 def gateway_install():
