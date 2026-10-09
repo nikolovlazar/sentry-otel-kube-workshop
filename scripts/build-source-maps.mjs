@@ -68,6 +68,7 @@ function build(component) {
   writeFileSync(logPath, details, { mode: 0o600 });
   chmodSync(logPath, 0o600);
   if (result.error || result.status !== 0 || !details.toLowerCase().includes('processing complete')) {
+    console.error('Sentry source-map upload diagnostics (' + component + '):\n' + (details.trim() || 'The CLI did not emit diagnostic output.'));
     throw new Error('Sentry source-map upload or processing failed. See .local/verification/build-source-maps-' + component + '.log; the build is incomplete.');
   }
   console.log('Sentry processed ' + component + ' source maps for the configured release.');
