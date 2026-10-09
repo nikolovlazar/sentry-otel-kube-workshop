@@ -1,0 +1,305 @@
+{
+  "apiVersion": "v1",
+  "kind": "List",
+  "items": [
+    {
+      "apiVersion": "apps/v1",
+      "kind": "StatefulSet",
+      "metadata": {
+        "name": "postgres",
+        "namespace": "sentry-otel-workshop",
+        "labels": {
+          "app.kubernetes.io/name": "postgres",
+          "app.kubernetes.io/part-of": "sentry-otel-workshop"
+        }
+      },
+      "spec": {
+        "serviceName": "postgres",
+        "replicas": 1,
+        "selector": {
+          "matchLabels": {
+            "app.kubernetes.io/name": "postgres"
+          }
+        },
+        "template": {
+          "metadata": {
+            "labels": {
+              "app.kubernetes.io/name": "postgres",
+              "app.kubernetes.io/part-of": "sentry-otel-workshop"
+            }
+          },
+          "spec": {
+            "automountServiceAccountToken": false,
+            "containers": [
+              {
+                "name": "postgres",
+                "image": "postgres:17.11@sha256:2d2b8998d31037bf721cfdf764d76ba74171b4fab3431b7f72c27c56ddbdf9e3",
+                "ports": [
+                  {
+                    "containerPort": 5432
+                  }
+                ],
+                "env": [
+                  {
+                    "name": "POSTGRES_USER",
+                    "value": "workshop"
+                  },
+                  {
+                    "name": "POSTGRES_DB",
+                    "value": "workshop"
+                  },
+                  {
+                    "name": "POSTGRES_PASSWORD",
+                    "valueFrom": {
+                      "secretKeyRef": {
+                        "name": "workshop-secrets",
+                        "key": "POSTGRES_PASSWORD"
+                      }
+                    }
+                  },
+                  {
+                    "name": "PGDATA",
+                    "value": "/var/lib/postgresql/data/pgdata"
+                  }
+                ],
+                "volumeMounts": [
+                  {
+                    "name": "data",
+                    "mountPath": "/var/lib/postgresql/data"
+                  },
+                  {
+                    "name": "init",
+                    "mountPath": "/docker-entrypoint-initdb.d",
+                    "readOnly": true
+                  }
+                ],
+                "resources": {
+                  "requests": {
+                    "cpu": "100m",
+                    "memory": "256Mi"
+                  },
+                  "limits": {
+                    "cpu": "1000m",
+                    "memory": "512Mi"
+                  }
+                },
+                "readinessProbe": {
+                  "exec": {
+                    "command": [
+                      "sh",
+                      "-c",
+                      "pg_isready -U workshop -d workshop"
+                    ]
+                  },
+                  "initialDelaySeconds": 5,
+                  "periodSeconds": 5
+                },
+                "livenessProbe": {
+                  "exec": {
+                    "command": [
+                      "sh",
+                      "-c",
+                      "pg_isready -U workshop -d workshop"
+                    ]
+                  },
+                  "initialDelaySeconds": 15,
+                  "periodSeconds": 10
+                }
+              }
+            ],
+            "volumes": [
+              {
+                "name": "init",
+                "secret": {
+                  "secretName": "postgres-init"
+                }
+              }
+            ]
+          }
+        },
+        "volumeClaimTemplates": [
+          {
+            "metadata": {
+              "name": "data"
+            },
+            "spec": {
+              "storageClassName": "standard",
+              "accessModes": [
+                "ReadWriteOnce"
+              ],
+              "resources": {
+                "requests": {
+                  "storage": "2Gi"
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Service",
+      "metadata": {
+        "name": "postgres",
+        "namespace": "sentry-otel-workshop",
+        "labels": {
+          "app.kubernetes.io/name": "postgres",
+          "app.kubernetes.io/part-of": "sentry-otel-workshop"
+        }
+      },
+      "spec": {
+        "selector": {
+          "app.kubernetes.io/name": "postgres"
+        },
+        "ports": [
+          {
+            "name": "tcp",
+            "port": 5432,
+            "targetPort": 5432
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "apps/v1",
+      "kind": "StatefulSet",
+      "metadata": {
+        "name": "redis",
+        "namespace": "sentry-otel-workshop",
+        "labels": {
+          "app.kubernetes.io/name": "redis",
+          "app.kubernetes.io/part-of": "sentry-otel-workshop"
+        }
+      },
+      "spec": {
+        "serviceName": "redis",
+        "replicas": 1,
+        "selector": {
+          "matchLabels": {
+            "app.kubernetes.io/name": "redis"
+          }
+        },
+        "template": {
+          "metadata": {
+            "labels": {
+              "app.kubernetes.io/name": "redis",
+              "app.kubernetes.io/part-of": "sentry-otel-workshop"
+            }
+          },
+          "spec": {
+            "automountServiceAccountToken": false,
+            "containers": [
+              {
+                "name": "redis",
+                "image": "redis:7.4.11@sha256:4fa24486b8bcca8eec45ee0eb166edc674795e53a2b53d1a9ef263eecebaac85",
+                "ports": [
+                  {
+                    "containerPort": 6379
+                  }
+                ],
+                "env": [
+                  {
+                    "name": "REDIS_PASSWORD",
+                    "valueFrom": {
+                      "secretKeyRef": {
+                        "name": "workshop-secrets",
+                        "key": "REDIS_PASSWORD"
+                      }
+                    }
+                  }
+                ],
+                "volumeMounts": [
+                  {
+                    "name": "data",
+                    "mountPath": "/data"
+                  }
+                ],
+                "resources": {
+                  "requests": {
+                    "cpu": "100m",
+                    "memory": "64Mi"
+                  },
+                  "limits": {
+                    "cpu": "1000m",
+                    "memory": "128Mi"
+                  }
+                },
+                "readinessProbe": {
+                  "exec": {
+                    "command": [
+                      "sh",
+                      "-c",
+                      "REDISCLI_AUTH=\"$REDIS_PASSWORD\" redis-cli ping"
+                    ]
+                  },
+                  "initialDelaySeconds": 5,
+                  "periodSeconds": 5
+                },
+                "livenessProbe": {
+                  "exec": {
+                    "command": [
+                      "sh",
+                      "-c",
+                      "REDISCLI_AUTH=\"$REDIS_PASSWORD\" redis-cli ping"
+                    ]
+                  },
+                  "initialDelaySeconds": 15,
+                  "periodSeconds": 10
+                },
+                "command": [
+                  "sh",
+                  "-c",
+                  "exec redis-server --appendonly yes --requirepass \"$REDIS_PASSWORD\" --maxmemory 64mb --maxmemory-policy noeviction"
+                ]
+              }
+            ],
+            "volumes": []
+          }
+        },
+        "volumeClaimTemplates": [
+          {
+            "metadata": {
+              "name": "data"
+            },
+            "spec": {
+              "storageClassName": "standard",
+              "accessModes": [
+                "ReadWriteOnce"
+              ],
+              "resources": {
+                "requests": {
+                  "storage": "1Gi"
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Service",
+      "metadata": {
+        "name": "redis",
+        "namespace": "sentry-otel-workshop",
+        "labels": {
+          "app.kubernetes.io/name": "redis",
+          "app.kubernetes.io/part-of": "sentry-otel-workshop"
+        }
+      },
+      "spec": {
+        "selector": {
+          "app.kubernetes.io/name": "redis"
+        },
+        "ports": [
+          {
+            "name": "tcp",
+            "port": 6379,
+            "targetPort": 6379
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,461 @@
+{
+  "apiVersion": "v1",
+  "kind": "List",
+  "items": [
+    {
+      "apiVersion": "networking.k8s.io/v1",
+      "kind": "NetworkPolicy",
+      "metadata": {
+        "name": "default-deny-ingress",
+        "namespace": "sentry-otel-workshop",
+        "labels": {
+          "app.kubernetes.io/name": "default-deny-ingress",
+          "app.kubernetes.io/part-of": "sentry-otel-workshop"
+        }
+      },
+      "spec": {
+        "podSelector": {
+          "matchLabels": {}
+        },
+        "policyTypes": [
+          "Ingress"
+        ],
+        "ingress": []
+      }
+    },
+    {
+      "apiVersion": "networking.k8s.io/v1",
+      "kind": "NetworkPolicy",
+      "metadata": {
+        "name": "web",
+        "namespace": "sentry-otel-workshop",
+        "labels": {
+          "app.kubernetes.io/name": "web",
+          "app.kubernetes.io/part-of": "sentry-otel-workshop"
+        }
+      },
+      "spec": {
+        "podSelector": {
+          "matchLabels": {
+            "app.kubernetes.io/name": "web"
+          }
+        },
+        "policyTypes": [
+          "Ingress"
+        ],
+        "ingress": [
+          {
+            "from": [
+              {
+                "namespaceSelector": {
+                  "matchLabels": {
+                    "kubernetes.io/metadata.name": "sentry-otel-workshop"
+                  }
+                },
+                "podSelector": {
+                  "matchLabels": {
+                    "gateway.envoyproxy.io/owning-gateway-name": "workshop"
+                  }
+                }
+              }
+            ],
+            "ports": [
+              {
+                "protocol": "TCP",
+                "port": 3000
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "networking.k8s.io/v1",
+      "kind": "NetworkPolicy",
+      "metadata": {
+        "name": "catalog",
+        "namespace": "sentry-otel-workshop",
+        "labels": {
+          "app.kubernetes.io/name": "catalog",
+          "app.kubernetes.io/part-of": "sentry-otel-workshop"
+        }
+      },
+      "spec": {
+        "podSelector": {
+          "matchLabels": {
+            "app.kubernetes.io/name": "catalog"
+          }
+        },
+        "policyTypes": [
+          "Ingress"
+        ],
+        "ingress": [
+          {
+            "from": [
+              {
+                "namespaceSelector": {
+                  "matchLabels": {
+                    "kubernetes.io/metadata.name": "sentry-otel-workshop"
+                  }
+                },
+                "podSelector": {
+                  "matchLabels": {
+                    "app.kubernetes.io/name": "web"
+                  }
+                }
+              }
+            ],
+            "ports": [
+              {
+                "protocol": "TCP",
+                "port": 8000
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "networking.k8s.io/v1",
+      "kind": "NetworkPolicy",
+      "metadata": {
+        "name": "fulfillment",
+        "namespace": "sentry-otel-workshop",
+        "labels": {
+          "app.kubernetes.io/name": "fulfillment",
+          "app.kubernetes.io/part-of": "sentry-otel-workshop"
+        }
+      },
+      "spec": {
+        "podSelector": {
+          "matchLabels": {
+            "app.kubernetes.io/name": "fulfillment"
+          }
+        },
+        "policyTypes": [
+          "Ingress"
+        ],
+        "ingress": [
+          {
+            "from": [
+              {
+                "namespaceSelector": {
+                  "matchLabels": {
+                    "kubernetes.io/metadata.name": "sentry-otel-workshop"
+                  }
+                },
+                "podSelector": {
+                  "matchLabels": {
+                    "app.kubernetes.io/name": "web"
+                  }
+                }
+              },
+              {
+                "namespaceSelector": {
+                  "matchLabels": {
+                    "kubernetes.io/metadata.name": "sentry-otel-workshop"
+                  }
+                },
+                "podSelector": {
+                  "matchLabels": {
+                    "app.kubernetes.io/name": "notification-worker"
+                  }
+                }
+              }
+            ],
+            "ports": [
+              {
+                "protocol": "TCP",
+                "port": 50051
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "networking.k8s.io/v1",
+      "kind": "NetworkPolicy",
+      "metadata": {
+        "name": "postgres",
+        "namespace": "sentry-otel-workshop",
+        "labels": {
+          "app.kubernetes.io/name": "postgres",
+          "app.kubernetes.io/part-of": "sentry-otel-workshop"
+        }
+      },
+      "spec": {
+        "podSelector": {
+          "matchLabels": {
+            "app.kubernetes.io/name": "postgres"
+          }
+        },
+        "policyTypes": [
+          "Ingress"
+        ],
+        "ingress": [
+          {
+            "from": [
+              {
+                "namespaceSelector": {
+                  "matchLabels": {
+                    "kubernetes.io/metadata.name": "sentry-otel-workshop"
+                  }
+                },
+                "podSelector": {
+                  "matchLabels": {
+                    "app.kubernetes.io/name": "catalog"
+                  }
+                }
+              },
+              {
+                "namespaceSelector": {
+                  "matchLabels": {
+                    "kubernetes.io/metadata.name": "sentry-otel-workshop"
+                  }
+                },
+                "podSelector": {
+                  "matchLabels": {
+                    "app.kubernetes.io/name": "fulfillment"
+                  }
+                }
+              },
+              {
+                "namespaceSelector": {
+                  "matchLabels": {
+                    "kubernetes.io/metadata.name": "sentry-otel-workshop"
+                  }
+                },
+                "podSelector": {
+                  "matchLabels": {
+                    "app.kubernetes.io/name": "migrations"
+                  }
+                }
+              }
+            ],
+            "ports": [
+              {
+                "protocol": "TCP",
+                "port": 5432
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "networking.k8s.io/v1",
+      "kind": "NetworkPolicy",
+      "metadata": {
+        "name": "redis",
+        "namespace": "sentry-otel-workshop",
+        "labels": {
+          "app.kubernetes.io/name": "redis",
+          "app.kubernetes.io/part-of": "sentry-otel-workshop"
+        }
+      },
+      "spec": {
+        "podSelector": {
+          "matchLabels": {
+            "app.kubernetes.io/name": "redis"
+          }
+        },
+        "policyTypes": [
+          "Ingress"
+        ],
+        "ingress": [
+          {
+            "from": [
+              {
+                "namespaceSelector": {
+                  "matchLabels": {
+                    "kubernetes.io/metadata.name": "sentry-otel-workshop"
+                  }
+                },
+                "podSelector": {
+                  "matchLabels": {
+                    "app.kubernetes.io/name": "catalog"
+                  }
+                }
+              },
+              {
+                "namespaceSelector": {
+                  "matchLabels": {
+                    "kubernetes.io/metadata.name": "sentry-otel-workshop"
+                  }
+                },
+                "podSelector": {
+                  "matchLabels": {
+                    "app.kubernetes.io/name": "fulfillment"
+                  }
+                }
+              },
+              {
+                "namespaceSelector": {
+                  "matchLabels": {
+                    "kubernetes.io/metadata.name": "sentry-otel-workshop"
+                  }
+                },
+                "podSelector": {
+                  "matchLabels": {
+                    "app.kubernetes.io/name": "notification-worker"
+                  }
+                }
+              }
+            ],
+            "ports": [
+              {
+                "protocol": "TCP",
+                "port": 6379
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "networking.k8s.io/v1",
+      "kind": "NetworkPolicy",
+      "metadata": {
+        "name": "edge",
+        "namespace": "sentry-otel-workshop",
+        "labels": {
+          "app.kubernetes.io/name": "edge",
+          "app.kubernetes.io/part-of": "sentry-otel-workshop"
+        }
+      },
+      "spec": {
+        "podSelector": {
+          "matchLabels": {
+            "gateway.envoyproxy.io/owning-gateway-name": "workshop"
+          }
+        },
+        "policyTypes": [
+          "Ingress"
+        ],
+        "ingress": [
+          {
+            "ports": [
+              {
+                "protocol": "TCP",
+                "port": 10080
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "networking.k8s.io/v1",
+      "kind": "NetworkPolicy",
+      "metadata": {
+        "name": "default-deny-ingress",
+        "namespace": "observability",
+        "labels": {
+          "app.kubernetes.io/name": "default-deny-ingress",
+          "app.kubernetes.io/part-of": "sentry-otel-workshop"
+        }
+      },
+      "spec": {
+        "podSelector": {
+          "matchLabels": {}
+        },
+        "policyTypes": [
+          "Ingress"
+        ],
+        "ingress": []
+      }
+    },
+    {
+      "apiVersion": "networking.k8s.io/v1",
+      "kind": "NetworkPolicy",
+      "metadata": {
+        "name": "agent",
+        "namespace": "observability",
+        "labels": {
+          "app.kubernetes.io/name": "agent",
+          "app.kubernetes.io/part-of": "sentry-otel-workshop"
+        }
+      },
+      "spec": {
+        "podSelector": {
+          "matchLabels": {
+            "app.kubernetes.io/name": "otel-agent"
+          }
+        },
+        "policyTypes": [
+          "Ingress"
+        ],
+        "ingress": [
+          {
+            "from": [
+              {
+                "namespaceSelector": {
+                  "matchLabels": {
+                    "kubernetes.io/metadata.name": "sentry-otel-workshop"
+                  }
+                }
+              }
+            ],
+            "ports": [
+              {
+                "protocol": "TCP",
+                "port": 4317
+              },
+              {
+                "protocol": "TCP",
+                "port": 4318
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "networking.k8s.io/v1",
+      "kind": "NetworkPolicy",
+      "metadata": {
+        "name": "gateway",
+        "namespace": "observability",
+        "labels": {
+          "app.kubernetes.io/name": "gateway",
+          "app.kubernetes.io/part-of": "sentry-otel-workshop"
+        }
+      },
+      "spec": {
+        "podSelector": {
+          "matchLabels": {
+            "app.kubernetes.io/name": "otel-gateway"
+          }
+        },
+        "policyTypes": [
+          "Ingress"
+        ],
+        "ingress": [
+          {
+            "from": [
+              {
+                "namespaceSelector": {
+                  "matchLabels": {
+                    "kubernetes.io/metadata.name": "observability"
+                  }
+                },
+                "podSelector": {
+                  "matchLabels": {
+                    "app.kubernetes.io/name": "otel-agent"
+                  }
+                }
+              }
+            ],
+            "ports": [
+              {
+                "protocol": "TCP",
+                "port": 4317
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

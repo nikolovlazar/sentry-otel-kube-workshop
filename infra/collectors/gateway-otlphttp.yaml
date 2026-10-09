@@ -1,0 +1,333 @@
+{
+  "extensions": {
+    "health_check": {
+      "endpoint": "0.0.0.0:13133"
+    },
+    "file_storage": {
+      "directory": "/var/lib/otelcol",
+      "create_directory": true
+    }
+  },
+  "receivers": {
+    "otlp": {
+      "protocols": {
+        "grpc": {
+          "endpoint": "0.0.0.0:4317"
+        },
+        "http": {
+          "endpoint": "0.0.0.0:4318"
+        }
+      }
+    }
+  },
+  "processors": {
+    "memory_limiter": {
+      "check_interval": "1s",
+      "limit_mib": 384,
+      "spike_limit_mib": 96
+    },
+    "attributes/redact": {
+      "actions": [
+        {
+          "key": "http.request.header.authorization",
+          "action": "delete"
+        },
+        {
+          "key": "http.request.header.cookie",
+          "action": "delete"
+        },
+        {
+          "key": "http.response.header.set-cookie",
+          "action": "delete"
+        },
+        {
+          "key": "db.connection_string",
+          "action": "delete"
+        }
+      ]
+    },
+    "batch": {
+      "timeout": "1s",
+      "send_batch_size": 256,
+      "send_batch_max_size": 512
+    }
+  },
+  "service": {
+    "extensions": [
+      "health_check",
+      "file_storage"
+    ],
+    "pipelines": {
+      "traces/web": {
+        "receivers": [
+          "routing/traces"
+        ],
+        "exporters": [
+          "otlp_http/web"
+        ]
+      },
+      "traces/catalog": {
+        "receivers": [
+          "routing/traces"
+        ],
+        "exporters": [
+          "otlp_http/catalog"
+        ]
+      },
+      "traces/fulfillment": {
+        "receivers": [
+          "routing/traces"
+        ],
+        "exporters": [
+          "otlp_http/fulfillment"
+        ]
+      },
+      "traces/worker": {
+        "receivers": [
+          "routing/traces"
+        ],
+        "exporters": [
+          "otlp_http/worker"
+        ]
+      },
+      "traces/infrastructure": {
+        "receivers": [
+          "routing/traces"
+        ],
+        "exporters": [
+          "otlp_http/infrastructure"
+        ]
+      },
+      "traces/in": {
+        "receivers": [
+          "otlp"
+        ],
+        "processors": [
+          "memory_limiter",
+          "attributes/redact",
+          "batch"
+        ],
+        "exporters": [
+          "routing/traces"
+        ]
+      },
+      "logs/web": {
+        "receivers": [
+          "routing/logs"
+        ],
+        "exporters": [
+          "otlp_http/web"
+        ]
+      },
+      "logs/catalog": {
+        "receivers": [
+          "routing/logs"
+        ],
+        "exporters": [
+          "otlp_http/catalog"
+        ]
+      },
+      "logs/fulfillment": {
+        "receivers": [
+          "routing/logs"
+        ],
+        "exporters": [
+          "otlp_http/fulfillment"
+        ]
+      },
+      "logs/worker": {
+        "receivers": [
+          "routing/logs"
+        ],
+        "exporters": [
+          "otlp_http/worker"
+        ]
+      },
+      "logs/infrastructure": {
+        "receivers": [
+          "routing/logs"
+        ],
+        "exporters": [
+          "otlp_http/infrastructure"
+        ]
+      },
+      "logs/in": {
+        "receivers": [
+          "otlp"
+        ],
+        "processors": [
+          "memory_limiter",
+          "attributes/redact",
+          "batch"
+        ],
+        "exporters": [
+          "routing/logs"
+        ]
+      }
+    }
+  },
+  "exporters": {
+    "otlp_http/web": {
+      "endpoint": "${env:SENTRY_OTLP_ENDPOINT_WEB}",
+      "headers": {
+        "x-sentry-auth": "${env:SENTRY_OTLP_AUTH_WEB}"
+      },
+      "sending_queue": {
+        "enabled": true,
+        "storage": "file_storage",
+        "num_consumers": 2,
+        "queue_size": 1000
+      },
+      "retry_on_failure": {
+        "enabled": true,
+        "initial_interval": "1s",
+        "max_interval": "10s",
+        "max_elapsed_time": "120s"
+      }
+    },
+    "otlp_http/catalog": {
+      "endpoint": "${env:SENTRY_OTLP_ENDPOINT_CATALOG}",
+      "headers": {
+        "x-sentry-auth": "${env:SENTRY_OTLP_AUTH_CATALOG}"
+      },
+      "sending_queue": {
+        "enabled": true,
+        "storage": "file_storage",
+        "num_consumers": 2,
+        "queue_size": 1000
+      },
+      "retry_on_failure": {
+        "enabled": true,
+        "initial_interval": "1s",
+        "max_interval": "10s",
+        "max_elapsed_time": "120s"
+      }
+    },
+    "otlp_http/fulfillment": {
+      "endpoint": "${env:SENTRY_OTLP_ENDPOINT_FULFILLMENT}",
+      "headers": {
+        "x-sentry-auth": "${env:SENTRY_OTLP_AUTH_FULFILLMENT}"
+      },
+      "sending_queue": {
+        "enabled": true,
+        "storage": "file_storage",
+        "num_consumers": 2,
+        "queue_size": 1000
+      },
+      "retry_on_failure": {
+        "enabled": true,
+        "initial_interval": "1s",
+        "max_interval": "10s",
+        "max_elapsed_time": "120s"
+      }
+    },
+    "otlp_http/worker": {
+      "endpoint": "${env:SENTRY_OTLP_ENDPOINT_WORKER}",
+      "headers": {
+        "x-sentry-auth": "${env:SENTRY_OTLP_AUTH_WORKER}"
+      },
+      "sending_queue": {
+        "enabled": true,
+        "storage": "file_storage",
+        "num_consumers": 2,
+        "queue_size": 1000
+      },
+      "retry_on_failure": {
+        "enabled": true,
+        "initial_interval": "1s",
+        "max_interval": "10s",
+        "max_elapsed_time": "120s"
+      }
+    },
+    "otlp_http/infrastructure": {
+      "endpoint": "${env:SENTRY_OTLP_ENDPOINT_INFRASTRUCTURE}",
+      "headers": {
+        "x-sentry-auth": "${env:SENTRY_OTLP_AUTH_INFRASTRUCTURE}"
+      },
+      "sending_queue": {
+        "enabled": true,
+        "storage": "file_storage",
+        "num_consumers": 2,
+        "queue_size": 1000
+      },
+      "retry_on_failure": {
+        "enabled": true,
+        "initial_interval": "1s",
+        "max_interval": "10s",
+        "max_elapsed_time": "120s"
+      }
+    }
+  },
+  "connectors": {
+    "routing/traces": {
+      "error_mode": "propagate",
+      "table": [
+        {
+          "condition": "resource.attributes[\"service.name\"] == \"web\"",
+          "pipelines": [
+            "traces/web"
+          ]
+        },
+        {
+          "condition": "resource.attributes[\"service.name\"] == \"catalog\"",
+          "pipelines": [
+            "traces/catalog"
+          ]
+        },
+        {
+          "condition": "resource.attributes[\"service.name\"] == \"fulfillment\"",
+          "pipelines": [
+            "traces/fulfillment"
+          ]
+        },
+        {
+          "condition": "resource.attributes[\"service.name\"] == \"notification-worker\"",
+          "pipelines": [
+            "traces/worker"
+          ]
+        },
+        {
+          "condition": "resource.attributes[\"service.name\"] == \"edge\" or resource.attributes[\"service.name\"] == \"postgres\" or resource.attributes[\"service.name\"] == \"redis\"",
+          "pipelines": [
+            "traces/infrastructure"
+          ]
+        }
+      ]
+    },
+    "routing/logs": {
+      "error_mode": "propagate",
+      "table": [
+        {
+          "condition": "resource.attributes[\"service.name\"] == \"web\"",
+          "pipelines": [
+            "logs/web"
+          ]
+        },
+        {
+          "condition": "resource.attributes[\"service.name\"] == \"catalog\"",
+          "pipelines": [
+            "logs/catalog"
+          ]
+        },
+        {
+          "condition": "resource.attributes[\"service.name\"] == \"fulfillment\"",
+          "pipelines": [
+            "logs/fulfillment"
+          ]
+        },
+        {
+          "condition": "resource.attributes[\"service.name\"] == \"notification-worker\"",
+          "pipelines": [
+            "logs/worker"
+          ]
+        },
+        {
+          "condition": "resource.attributes[\"service.name\"] == \"edge\" or resource.attributes[\"service.name\"] == \"postgres\" or resource.attributes[\"service.name\"] == \"redis\"",
+          "pipelines": [
+            "logs/infrastructure"
+          ]
+        }
+      ]
+    }
+  }
+}

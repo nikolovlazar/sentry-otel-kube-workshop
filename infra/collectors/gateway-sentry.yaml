@@ -1,0 +1,115 @@
+{
+  "extensions": {
+    "health_check": {
+      "endpoint": "0.0.0.0:13133"
+    },
+    "file_storage": {
+      "directory": "/var/lib/otelcol",
+      "create_directory": true
+    }
+  },
+  "receivers": {
+    "otlp": {
+      "protocols": {
+        "grpc": {
+          "endpoint": "0.0.0.0:4317"
+        },
+        "http": {
+          "endpoint": "0.0.0.0:4318"
+        }
+      }
+    }
+  },
+  "processors": {
+    "memory_limiter": {
+      "check_interval": "1s",
+      "limit_mib": 384,
+      "spike_limit_mib": 96
+    },
+    "attributes/redact": {
+      "actions": [
+        {
+          "key": "http.request.header.authorization",
+          "action": "delete"
+        },
+        {
+          "key": "http.request.header.cookie",
+          "action": "delete"
+        },
+        {
+          "key": "http.response.header.set-cookie",
+          "action": "delete"
+        },
+        {
+          "key": "db.connection_string",
+          "action": "delete"
+        }
+      ]
+    },
+    "batch": {
+      "timeout": "1s",
+      "send_batch_size": 256,
+      "send_batch_max_size": 512
+    }
+  },
+  "service": {
+    "extensions": [
+      "health_check",
+      "file_storage"
+    ],
+    "pipelines": {
+      "traces": {
+        "receivers": [
+          "otlp"
+        ],
+        "processors": [
+          "memory_limiter",
+          "attributes/redact",
+          "batch"
+        ],
+        "exporters": [
+          "sentry"
+        ]
+      },
+      "logs": {
+        "receivers": [
+          "otlp"
+        ],
+        "processors": [
+          "memory_limiter",
+          "attributes/redact",
+          "batch"
+        ],
+        "exporters": [
+          "sentry"
+        ]
+      }
+    }
+  },
+  "exporters": {
+    "sentry": {
+      "url": "${env:SENTRY_BASE_URL}",
+      "org_slug": "${env:SENTRY_ORG_SLUG}",
+      "auth_token": "${env:SENTRY_AUTH_TOKEN}",
+      "auto_create_projects": false,
+      "routing": {
+        "project_from_attribute": "service.name",
+        "attribute_to_project_mapping": {
+          "web": "sentry-otel-workshop-web",
+          "catalog": "sentry-otel-workshop-catalog",
+          "fulfillment": "sentry-otel-workshop-fulfillment",
+          "notification-worker": "sentry-otel-workshop-worker",
+          "edge": "sentry-otel-workshop-infrastructure",
+          "postgres": "sentry-otel-workshop-infrastructure",
+          "redis": "sentry-otel-workshop-infrastructure"
+        }
+      },
+      "sending_queue": {
+        "enabled": true,
+        "storage": "file_storage",
+        "num_consumers": 2,
+        "queue_size": 1000
+      }
+    }
+  }
+}

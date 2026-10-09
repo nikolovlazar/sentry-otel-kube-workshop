@@ -1,0 +1,962 @@
+{
+  "apiVersion": "v1",
+  "kind": "List",
+  "items": [
+    {
+      "apiVersion": "apps/v1",
+      "kind": "Deployment",
+      "metadata": {
+        "name": "web",
+        "namespace": "sentry-otel-workshop",
+        "labels": {
+          "app.kubernetes.io/name": "web",
+          "app.kubernetes.io/part-of": "sentry-otel-workshop"
+        }
+      },
+      "spec": {
+        "replicas": 1,
+        "selector": {
+          "matchLabels": {
+            "app.kubernetes.io/name": "web"
+          }
+        },
+        "template": {
+          "metadata": {
+            "labels": {
+              "app.kubernetes.io/name": "web",
+              "app.kubernetes.io/part-of": "sentry-otel-workshop"
+            }
+          },
+          "spec": {
+            "serviceAccountName": "app",
+            "automountServiceAccountToken": false,
+            "terminationGracePeriodSeconds": 20,
+            "securityContext": {
+              "seccompProfile": {
+                "type": "RuntimeDefault"
+              }
+            },
+            "containers": [
+              {
+                "name": "web",
+                "image": "workshop/web:local",
+                "imagePullPolicy": "Never",
+                "ports": [
+                  {
+                    "containerPort": 3000,
+                    "name": "http"
+                  }
+                ],
+                "env": [
+                  {
+                    "name": "SENTRY_DSN",
+                    "valueFrom": {
+                      "secretKeyRef": {
+                        "name": "workshop-secrets",
+                        "key": "SENTRY_DSN_WEB"
+                      }
+                    }
+                  },
+                  {
+                    "name": "SENTRY_RELEASE",
+                    "valueFrom": {
+                      "secretKeyRef": {
+                        "name": "workshop-secrets",
+                        "key": "SENTRY_RELEASE"
+                      }
+                    }
+                  },
+                  {
+                    "name": "SERVICE_VERSION",
+                    "valueFrom": {
+                      "secretKeyRef": {
+                        "name": "workshop-secrets",
+                        "key": "SERVICE_VERSION"
+                      }
+                    }
+                  },
+                  {
+                    "name": "WORKSHOP_SESSION_ID",
+                    "valueFrom": {
+                      "secretKeyRef": {
+                        "name": "workshop-secrets",
+                        "key": "WORKSHOP_SESSION_ID"
+                      }
+                    }
+                  },
+                  {
+                    "name": "WORKSHOP_ENVIRONMENT",
+                    "valueFrom": {
+                      "secretKeyRef": {
+                        "name": "workshop-secrets",
+                        "key": "WORKSHOP_ENVIRONMENT"
+                      }
+                    }
+                  },
+                  {
+                    "name": "OTEL_SERVICE_NAME",
+                    "value": "web"
+                  },
+                  {
+                    "name": "OTEL_EXPORTER_OTLP_ENDPOINT",
+                    "value": "http://otel-agent.observability.svc.cluster.local:4318"
+                  },
+                  {
+                    "name": "OTEL_EXPORTER_OTLP_PROTOCOL",
+                    "value": "http/protobuf"
+                  },
+                  {
+                    "name": "OTEL_PROPAGATORS",
+                    "value": "tracecontext,baggage"
+                  },
+                  {
+                    "name": "OTEL_TRACES_SAMPLER",
+                    "value": "always_on"
+                  },
+                  {
+                    "name": "POD_UID",
+                    "valueFrom": {
+                      "fieldRef": {
+                        "fieldPath": "metadata.uid"
+                      }
+                    }
+                  },
+                  {
+                    "name": "POD_NAME",
+                    "valueFrom": {
+                      "fieldRef": {
+                        "fieldPath": "metadata.name"
+                      }
+                    }
+                  },
+                  {
+                    "name": "POD_NAMESPACE",
+                    "valueFrom": {
+                      "fieldRef": {
+                        "fieldPath": "metadata.namespace"
+                      }
+                    }
+                  },
+                  {
+                    "name": "NODE_NAME",
+                    "valueFrom": {
+                      "fieldRef": {
+                        "fieldPath": "spec.nodeName"
+                      }
+                    }
+                  },
+                  {
+                    "name": "CATALOG_URL",
+                    "value": "http://catalog:8000"
+                  },
+                  {
+                    "name": "FULFILLMENT_ADDR",
+                    "value": "fulfillment:50051"
+                  },
+                  {
+                    "name": "SENTRY_ORG_SLUG",
+                    "valueFrom": {
+                      "secretKeyRef": {
+                        "name": "workshop-secrets",
+                        "key": "SENTRY_ORG_SLUG"
+                      }
+                    }
+                  },
+                  {
+                    "name": "SENTRY_BASE_URL",
+                    "valueFrom": {
+                      "secretKeyRef": {
+                        "name": "workshop-secrets",
+                        "key": "SENTRY_BASE_URL"
+                      }
+                    }
+                  }
+                ],
+                "resources": {
+                  "requests": {
+                    "cpu": "100m",
+                    "memory": "256Mi"
+                  },
+                  "limits": {
+                    "cpu": "1000m",
+                    "memory": "512Mi"
+                  }
+                },
+                "securityContext": {
+                  "allowPrivilegeEscalation": false,
+                  "capabilities": {
+                    "drop": [
+                      "ALL"
+                    ]
+                  },
+                  "runAsNonRoot": true,
+                  "runAsUser": 1000,
+                  "runAsGroup": 1000
+                },
+                "readinessProbe": {
+                  "httpGet": {
+                    "path": "/health/ready",
+                    "port": 3000
+                  },
+                  "initialDelaySeconds": 3,
+                  "periodSeconds": 5
+                },
+                "livenessProbe": {
+                  "httpGet": {
+                    "path": "/health/live",
+                    "port": 3000
+                  },
+                  "initialDelaySeconds": 10,
+                  "periodSeconds": 10
+                },
+                "startupProbe": {
+                  "httpGet": {
+                    "path": "/health/live",
+                    "port": 3000
+                  },
+                  "failureThreshold": 30,
+                  "periodSeconds": 2
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "apiVersion": "apps/v1",
+      "kind": "Deployment",
+      "metadata": {
+        "name": "catalog",
+        "namespace": "sentry-otel-workshop",
+        "labels": {
+          "app.kubernetes.io/name": "catalog",
+          "app.kubernetes.io/part-of": "sentry-otel-workshop"
+        }
+      },
+      "spec": {
+        "replicas": 1,
+        "selector": {
+          "matchLabels": {
+            "app.kubernetes.io/name": "catalog"
+          }
+        },
+        "template": {
+          "metadata": {
+            "labels": {
+              "app.kubernetes.io/name": "catalog",
+              "app.kubernetes.io/part-of": "sentry-otel-workshop"
+            }
+          },
+          "spec": {
+            "serviceAccountName": "app",
+            "automountServiceAccountToken": false,
+            "terminationGracePeriodSeconds": 20,
+            "securityContext": {
+              "seccompProfile": {
+                "type": "RuntimeDefault"
+              }
+            },
+            "containers": [
+              {
+                "name": "catalog",
+                "image": "workshop/catalog:local",
+                "imagePullPolicy": "Never",
+                "ports": [
+                  {
+                    "containerPort": 8000,
+                    "name": "http"
+                  }
+                ],
+                "env": [
+                  {
+                    "name": "SENTRY_DSN",
+                    "valueFrom": {
+                      "secretKeyRef": {
+                        "name": "workshop-secrets",
+                        "key": "SENTRY_DSN_CATALOG"
+                      }
+                    }
+                  },
+                  {
+                    "name": "SENTRY_RELEASE",
+                    "valueFrom": {
+                      "secretKeyRef": {
+                        "name": "workshop-secrets",
+                        "key": "SENTRY_RELEASE"
+                      }
+                    }
+                  },
+                  {
+                    "name": "SERVICE_VERSION",
+                    "valueFrom": {
+                      "secretKeyRef": {
+                        "name": "workshop-secrets",
+                        "key": "SERVICE_VERSION"
+                      }
+                    }
+                  },
+                  {
+                    "name": "WORKSHOP_SESSION_ID",
+                    "valueFrom": {
+                      "secretKeyRef": {
+                        "name": "workshop-secrets",
+                        "key": "WORKSHOP_SESSION_ID"
+                      }
+                    }
+                  },
+                  {
+                    "name": "WORKSHOP_ENVIRONMENT",
+                    "valueFrom": {
+                      "secretKeyRef": {
+                        "name": "workshop-secrets",
+                        "key": "WORKSHOP_ENVIRONMENT"
+                      }
+                    }
+                  },
+                  {
+                    "name": "OTEL_SERVICE_NAME",
+                    "value": "catalog"
+                  },
+                  {
+                    "name": "OTEL_EXPORTER_OTLP_ENDPOINT",
+                    "value": "http://otel-agent.observability.svc.cluster.local:4318"
+                  },
+                  {
+                    "name": "OTEL_EXPORTER_OTLP_PROTOCOL",
+                    "value": "http/protobuf"
+                  },
+                  {
+                    "name": "OTEL_PROPAGATORS",
+                    "value": "tracecontext,baggage"
+                  },
+                  {
+                    "name": "OTEL_TRACES_SAMPLER",
+                    "value": "always_on"
+                  },
+                  {
+                    "name": "POD_UID",
+                    "valueFrom": {
+                      "fieldRef": {
+                        "fieldPath": "metadata.uid"
+                      }
+                    }
+                  },
+                  {
+                    "name": "POD_NAME",
+                    "valueFrom": {
+                      "fieldRef": {
+                        "fieldPath": "metadata.name"
+                      }
+                    }
+                  },
+                  {
+                    "name": "POD_NAMESPACE",
+                    "valueFrom": {
+                      "fieldRef": {
+                        "fieldPath": "metadata.namespace"
+                      }
+                    }
+                  },
+                  {
+                    "name": "NODE_NAME",
+                    "valueFrom": {
+                      "fieldRef": {
+                        "fieldPath": "spec.nodeName"
+                      }
+                    }
+                  },
+                  {
+                    "name": "DATABASE_URL",
+                    "valueFrom": {
+                      "secretKeyRef": {
+                        "name": "workshop-secrets",
+                        "key": "CATALOG_DATABASE_URL"
+                      }
+                    }
+                  },
+                  {
+                    "name": "REDIS_URL",
+                    "valueFrom": {
+                      "secretKeyRef": {
+                        "name": "workshop-secrets",
+                        "key": "REDIS_URL"
+                      }
+                    }
+                  }
+                ],
+                "resources": {
+                  "requests": {
+                    "cpu": "100m",
+                    "memory": "128Mi"
+                  },
+                  "limits": {
+                    "cpu": "1000m",
+                    "memory": "256Mi"
+                  }
+                },
+                "securityContext": {
+                  "allowPrivilegeEscalation": false,
+                  "capabilities": {
+                    "drop": [
+                      "ALL"
+                    ]
+                  },
+                  "runAsNonRoot": true
+                },
+                "readinessProbe": {
+                  "httpGet": {
+                    "path": "/health/ready",
+                    "port": 8000
+                  },
+                  "initialDelaySeconds": 3,
+                  "periodSeconds": 5
+                },
+                "livenessProbe": {
+                  "httpGet": {
+                    "path": "/health/live",
+                    "port": 8000
+                  },
+                  "initialDelaySeconds": 10,
+                  "periodSeconds": 10
+                },
+                "startupProbe": {
+                  "httpGet": {
+                    "path": "/health/live",
+                    "port": 8000
+                  },
+                  "failureThreshold": 30,
+                  "periodSeconds": 2
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "apiVersion": "apps/v1",
+      "kind": "Deployment",
+      "metadata": {
+        "name": "fulfillment",
+        "namespace": "sentry-otel-workshop",
+        "labels": {
+          "app.kubernetes.io/name": "fulfillment",
+          "app.kubernetes.io/part-of": "sentry-otel-workshop"
+        }
+      },
+      "spec": {
+        "replicas": 1,
+        "selector": {
+          "matchLabels": {
+            "app.kubernetes.io/name": "fulfillment"
+          }
+        },
+        "template": {
+          "metadata": {
+            "labels": {
+              "app.kubernetes.io/name": "fulfillment",
+              "app.kubernetes.io/part-of": "sentry-otel-workshop"
+            }
+          },
+          "spec": {
+            "serviceAccountName": "app",
+            "automountServiceAccountToken": false,
+            "terminationGracePeriodSeconds": 20,
+            "securityContext": {
+              "seccompProfile": {
+                "type": "RuntimeDefault"
+              }
+            },
+            "containers": [
+              {
+                "name": "fulfillment",
+                "image": "workshop/fulfillment:local",
+                "imagePullPolicy": "Never",
+                "ports": [
+                  {
+                    "containerPort": 8081,
+                    "name": "http"
+                  },
+                  {
+                    "containerPort": 50051,
+                    "name": "grpc"
+                  }
+                ],
+                "env": [
+                  {
+                    "name": "SENTRY_DSN",
+                    "valueFrom": {
+                      "secretKeyRef": {
+                        "name": "workshop-secrets",
+                        "key": "SENTRY_DSN_FULFILLMENT"
+                      }
+                    }
+                  },
+                  {
+                    "name": "SENTRY_RELEASE",
+                    "valueFrom": {
+                      "secretKeyRef": {
+                        "name": "workshop-secrets",
+                        "key": "SENTRY_RELEASE"
+                      }
+                    }
+                  },
+                  {
+                    "name": "SERVICE_VERSION",
+                    "valueFrom": {
+                      "secretKeyRef": {
+                        "name": "workshop-secrets",
+                        "key": "SERVICE_VERSION"
+                      }
+                    }
+                  },
+                  {
+                    "name": "WORKSHOP_SESSION_ID",
+                    "valueFrom": {
+                      "secretKeyRef": {
+                        "name": "workshop-secrets",
+                        "key": "WORKSHOP_SESSION_ID"
+                      }
+                    }
+                  },
+                  {
+                    "name": "WORKSHOP_ENVIRONMENT",
+                    "valueFrom": {
+                      "secretKeyRef": {
+                        "name": "workshop-secrets",
+                        "key": "WORKSHOP_ENVIRONMENT"
+                      }
+                    }
+                  },
+                  {
+                    "name": "OTEL_SERVICE_NAME",
+                    "value": "fulfillment"
+                  },
+                  {
+                    "name": "OTEL_EXPORTER_OTLP_ENDPOINT",
+                    "value": "http://otel-agent.observability.svc.cluster.local:4318"
+                  },
+                  {
+                    "name": "OTEL_EXPORTER_OTLP_PROTOCOL",
+                    "value": "http/protobuf"
+                  },
+                  {
+                    "name": "OTEL_PROPAGATORS",
+                    "value": "tracecontext,baggage"
+                  },
+                  {
+                    "name": "OTEL_TRACES_SAMPLER",
+                    "value": "always_on"
+                  },
+                  {
+                    "name": "POD_UID",
+                    "valueFrom": {
+                      "fieldRef": {
+                        "fieldPath": "metadata.uid"
+                      }
+                    }
+                  },
+                  {
+                    "name": "POD_NAME",
+                    "valueFrom": {
+                      "fieldRef": {
+                        "fieldPath": "metadata.name"
+                      }
+                    }
+                  },
+                  {
+                    "name": "POD_NAMESPACE",
+                    "valueFrom": {
+                      "fieldRef": {
+                        "fieldPath": "metadata.namespace"
+                      }
+                    }
+                  },
+                  {
+                    "name": "NODE_NAME",
+                    "valueFrom": {
+                      "fieldRef": {
+                        "fieldPath": "spec.nodeName"
+                      }
+                    }
+                  },
+                  {
+                    "name": "DATABASE_URL",
+                    "valueFrom": {
+                      "secretKeyRef": {
+                        "name": "workshop-secrets",
+                        "key": "FULFILLMENT_DATABASE_URL"
+                      }
+                    }
+                  },
+                  {
+                    "name": "REDIS_URL",
+                    "valueFrom": {
+                      "secretKeyRef": {
+                        "name": "workshop-secrets",
+                        "key": "REDIS_URL"
+                      }
+                    }
+                  }
+                ],
+                "resources": {
+                  "requests": {
+                    "cpu": "100m",
+                    "memory": "64Mi"
+                  },
+                  "limits": {
+                    "cpu": "1000m",
+                    "memory": "128Mi"
+                  }
+                },
+                "securityContext": {
+                  "allowPrivilegeEscalation": false,
+                  "capabilities": {
+                    "drop": [
+                      "ALL"
+                    ]
+                  },
+                  "runAsNonRoot": true
+                },
+                "readinessProbe": {
+                  "httpGet": {
+                    "path": "/readyz",
+                    "port": 8081
+                  },
+                  "initialDelaySeconds": 3,
+                  "periodSeconds": 5
+                },
+                "livenessProbe": {
+                  "httpGet": {
+                    "path": "/healthz",
+                    "port": 8081
+                  },
+                  "initialDelaySeconds": 10,
+                  "periodSeconds": 10
+                },
+                "startupProbe": {
+                  "httpGet": {
+                    "path": "/healthz",
+                    "port": 8081
+                  },
+                  "failureThreshold": 30,
+                  "periodSeconds": 2
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "apiVersion": "apps/v1",
+      "kind": "Deployment",
+      "metadata": {
+        "name": "notification-worker",
+        "namespace": "sentry-otel-workshop",
+        "labels": {
+          "app.kubernetes.io/name": "notification-worker",
+          "app.kubernetes.io/part-of": "sentry-otel-workshop"
+        }
+      },
+      "spec": {
+        "replicas": 1,
+        "selector": {
+          "matchLabels": {
+            "app.kubernetes.io/name": "notification-worker"
+          }
+        },
+        "template": {
+          "metadata": {
+            "labels": {
+              "app.kubernetes.io/name": "notification-worker",
+              "app.kubernetes.io/part-of": "sentry-otel-workshop"
+            }
+          },
+          "spec": {
+            "serviceAccountName": "app",
+            "automountServiceAccountToken": false,
+            "terminationGracePeriodSeconds": 20,
+            "securityContext": {
+              "seccompProfile": {
+                "type": "RuntimeDefault"
+              }
+            },
+            "containers": [
+              {
+                "name": "notification-worker",
+                "image": "workshop/notification-worker:local",
+                "imagePullPolicy": "Never",
+                "ports": [
+                  {
+                    "containerPort": 8080,
+                    "name": "http"
+                  }
+                ],
+                "env": [
+                  {
+                    "name": "SENTRY_DSN",
+                    "valueFrom": {
+                      "secretKeyRef": {
+                        "name": "workshop-secrets",
+                        "key": "SENTRY_DSN_WORKER"
+                      }
+                    }
+                  },
+                  {
+                    "name": "SENTRY_RELEASE",
+                    "valueFrom": {
+                      "secretKeyRef": {
+                        "name": "workshop-secrets",
+                        "key": "SENTRY_RELEASE"
+                      }
+                    }
+                  },
+                  {
+                    "name": "SERVICE_VERSION",
+                    "valueFrom": {
+                      "secretKeyRef": {
+                        "name": "workshop-secrets",
+                        "key": "SERVICE_VERSION"
+                      }
+                    }
+                  },
+                  {
+                    "name": "WORKSHOP_SESSION_ID",
+                    "valueFrom": {
+                      "secretKeyRef": {
+                        "name": "workshop-secrets",
+                        "key": "WORKSHOP_SESSION_ID"
+                      }
+                    }
+                  },
+                  {
+                    "name": "WORKSHOP_ENVIRONMENT",
+                    "valueFrom": {
+                      "secretKeyRef": {
+                        "name": "workshop-secrets",
+                        "key": "WORKSHOP_ENVIRONMENT"
+                      }
+                    }
+                  },
+                  {
+                    "name": "OTEL_SERVICE_NAME",
+                    "value": "notification-worker"
+                  },
+                  {
+                    "name": "OTEL_EXPORTER_OTLP_ENDPOINT",
+                    "value": "http://otel-agent.observability.svc.cluster.local:4318"
+                  },
+                  {
+                    "name": "OTEL_EXPORTER_OTLP_PROTOCOL",
+                    "value": "http/protobuf"
+                  },
+                  {
+                    "name": "OTEL_PROPAGATORS",
+                    "value": "tracecontext,baggage"
+                  },
+                  {
+                    "name": "OTEL_TRACES_SAMPLER",
+                    "value": "always_on"
+                  },
+                  {
+                    "name": "POD_UID",
+                    "valueFrom": {
+                      "fieldRef": {
+                        "fieldPath": "metadata.uid"
+                      }
+                    }
+                  },
+                  {
+                    "name": "POD_NAME",
+                    "valueFrom": {
+                      "fieldRef": {
+                        "fieldPath": "metadata.name"
+                      }
+                    }
+                  },
+                  {
+                    "name": "POD_NAMESPACE",
+                    "valueFrom": {
+                      "fieldRef": {
+                        "fieldPath": "metadata.namespace"
+                      }
+                    }
+                  },
+                  {
+                    "name": "NODE_NAME",
+                    "valueFrom": {
+                      "fieldRef": {
+                        "fieldPath": "spec.nodeName"
+                      }
+                    }
+                  },
+                  {
+                    "name": "REDIS_URL",
+                    "valueFrom": {
+                      "secretKeyRef": {
+                        "name": "workshop-secrets",
+                        "key": "REDIS_URL"
+                      }
+                    }
+                  },
+                  {
+                    "name": "FULFILLMENT_ADDR",
+                    "value": "fulfillment:50051"
+                  }
+                ],
+                "resources": {
+                  "requests": {
+                    "cpu": "100m",
+                    "memory": "128Mi"
+                  },
+                  "limits": {
+                    "cpu": "1000m",
+                    "memory": "256Mi"
+                  }
+                },
+                "securityContext": {
+                  "allowPrivilegeEscalation": false,
+                  "capabilities": {
+                    "drop": [
+                      "ALL"
+                    ]
+                  },
+                  "runAsNonRoot": true,
+                  "runAsUser": 1000,
+                  "runAsGroup": 1000
+                },
+                "readinessProbe": {
+                  "httpGet": {
+                    "path": "/health/ready",
+                    "port": 8080
+                  },
+                  "initialDelaySeconds": 3,
+                  "periodSeconds": 5
+                },
+                "livenessProbe": {
+                  "httpGet": {
+                    "path": "/health/live",
+                    "port": 8080
+                  },
+                  "initialDelaySeconds": 10,
+                  "periodSeconds": 10
+                },
+                "startupProbe": {
+                  "httpGet": {
+                    "path": "/health/live",
+                    "port": 8080
+                  },
+                  "failureThreshold": 30,
+                  "periodSeconds": 2
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Service",
+      "metadata": {
+        "name": "web",
+        "namespace": "sentry-otel-workshop",
+        "labels": {
+          "app.kubernetes.io/name": "web",
+          "app.kubernetes.io/part-of": "sentry-otel-workshop"
+        }
+      },
+      "spec": {
+        "selector": {
+          "app.kubernetes.io/name": "web"
+        },
+        "ports": [
+          {
+            "name": "http",
+            "port": 3000,
+            "targetPort": 3000
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Service",
+      "metadata": {
+        "name": "catalog",
+        "namespace": "sentry-otel-workshop",
+        "labels": {
+          "app.kubernetes.io/name": "catalog",
+          "app.kubernetes.io/part-of": "sentry-otel-workshop"
+        }
+      },
+      "spec": {
+        "selector": {
+          "app.kubernetes.io/name": "catalog"
+        },
+        "ports": [
+          {
+            "name": "http",
+            "port": 8000,
+            "targetPort": 8000
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Service",
+      "metadata": {
+        "name": "fulfillment",
+        "namespace": "sentry-otel-workshop",
+        "labels": {
+          "app.kubernetes.io/name": "fulfillment",
+          "app.kubernetes.io/part-of": "sentry-otel-workshop"
+        }
+      },
+      "spec": {
+        "selector": {
+          "app.kubernetes.io/name": "fulfillment"
+        },
+        "ports": [
+          {
+            "name": "grpc",
+            "port": 50051,
+            "targetPort": 50051
+          },
+          {
+            "name": "health",
+            "port": 8081,
+            "targetPort": 8081
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Service",
+      "metadata": {
+        "name": "notification-worker",
+        "namespace": "sentry-otel-workshop",
+        "labels": {
+          "app.kubernetes.io/name": "notification-worker",
+          "app.kubernetes.io/part-of": "sentry-otel-workshop"
+        }
+      },
+      "spec": {
+        "selector": {
+          "app.kubernetes.io/name": "notification-worker"
+        },
+        "ports": [
+          {
+            "name": "health",
+            "port": 8080,
+            "targetPort": 8080
+          }
+        ]
+      }
+    }
+  ]
+}

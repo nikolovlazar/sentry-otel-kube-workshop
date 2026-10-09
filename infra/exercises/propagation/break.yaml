@@ -1,0 +1,19 @@
+{
+  "spec": {
+    "template": {
+      "spec": {
+        "containers": [
+          {
+            "name": "web",
+            "env": [
+              {
+                "name": "WORKSHOP_BREAK_CATALOG_PROPAGATION",
+                "value": "true"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

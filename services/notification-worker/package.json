@@ -1,0 +1,35 @@
+{
+  "name": "@workshop/notification-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc && sentry-cli sourcemaps inject dist",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test tests/*.test.ts",
+    "test:recovery": "node tests/recovery.mjs"
+  },
+  "dependencies": {
+    "@sentry/node": "11.6.0",
+    "@opentelemetry/api": "1.9.1",
+    "@opentelemetry/core": "2.12.0",
+    "@opentelemetry/resources": "2.12.0",
+    "@opentelemetry/sdk-node": "0.223.0",
+    "@opentelemetry/sdk-trace-base": "2.12.0",
+    "@opentelemetry/exporter-trace-otlp-http": "0.223.0",
+    "@grpc/grpc-js": "1.14.6",
+    "@grpc/proto-loader": "0.8.0",
+    "redis": "5.8.2"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "@types/node": "24.10.0",
+    "tsx": "4.20.6",
+    "@sentry/cli": "3.8.0"
+  },
+  "engines": {
+    "node": ">=24.21.0 <25"
+  }
+}

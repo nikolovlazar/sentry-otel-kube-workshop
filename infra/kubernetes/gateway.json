@@ -1,0 +1,177 @@
+{
+  "apiVersion": "v1",
+  "kind": "List",
+  "items": [
+    {
+      "apiVersion": "gateway.envoyproxy.io/v1alpha1",
+      "kind": "EnvoyProxy",
+      "metadata": {
+        "name": "workshop",
+        "namespace": "sentry-otel-workshop"
+      },
+      "spec": {
+        "provider": {
+          "type": "Kubernetes",
+          "kubernetes": {
+            "envoyService": {
+              "type": "ClusterIP"
+            },
+            "envoyDeployment": {
+              "replicas": 1,
+              "container": {
+                "resources": {
+                  "requests": {
+                    "cpu": "100m",
+                    "memory": "128Mi"
+                  },
+                  "limits": {
+                    "cpu": "1000m",
+                    "memory": "256Mi"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "telemetry": {
+          "tracing": {
+            "samplingRate": 100,
+            "provider": {
+              "type": "OpenTelemetry",
+              "serviceName": "edge",
+              "backendRefs": [
+                {
+                  "name": "otel-agent",
+                  "namespace": "observability",
+                  "port": 4317
+                }
+              ]
+            }
+          },
+          "accessLog": {
+            "settings": [
+              {
+                "format": {
+                  "type": "JSON",
+                  "json": {
+                    "body": "%REQ(:METHOD)% %REQ(:PATH)% %RESPONSE_CODE%",
+                    "severity": "INFO",
+                    "http.response.status_code": "%RESPONSE_CODE%",
+                    "http.request.method": "%REQ(:METHOD)%",
+                    "url.path": "%REQ(:PATH)%",
+                    "request_id": "%REQ(X-REQUEST-ID)%"
+                  }
+                },
+                "sinks": [
+                  {
+                    "type": "File",
+                    "file": {
+                      "path": "/dev/stdout"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "apiVersion": "gateway.networking.k8s.io/v1",
+      "kind": "GatewayClass",
+      "metadata": {
+        "name": "workshop"
+      },
+      "spec": {
+        "controllerName": "gateway.envoyproxy.io/gatewayclass-controller"
+      }
+    },
+    {
+      "apiVersion": "gateway.networking.k8s.io/v1",
+      "kind": "Gateway",
+      "metadata": {
+        "name": "workshop",
+        "namespace": "sentry-otel-workshop"
+      },
+      "spec": {
+        "gatewayClassName": "workshop",
+        "infrastructure": {
+          "parametersRef": {
+            "group": "gateway.envoyproxy.io",
+            "kind": "EnvoyProxy",
+            "name": "workshop"
+          }
+        },
+        "listeners": [
+          {
+            "name": "http",
+            "protocol": "HTTP",
+            "port": 80,
+            "allowedRoutes": {
+              "namespaces": {
+                "from": "Same"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "gateway.networking.k8s.io/v1",
+      "kind": "HTTPRoute",
+      "metadata": {
+        "name": "web",
+        "namespace": "sentry-otel-workshop"
+      },
+      "spec": {
+        "parentRefs": [
+          {
+            "name": "workshop"
+          }
+        ],
+        "rules": [
+          {
+            "matches": [
+              {
+                "path": {
+                  "type": "PathPrefix",
+                  "value": "/"
+                }
+              }
+            ],
+            "backendRefs": [
+              {
+                "name": "web",
+                "port": 3000
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "gateway.networking.k8s.io/v1beta1",
+      "kind": "ReferenceGrant",
+      "metadata": {
+        "name": "edge-telemetry",
+        "namespace": "observability"
+      },
+      "spec": {
+        "from": [
+          {
+            "group": "gateway.envoyproxy.io",
+            "kind": "EnvoyProxy",
+            "namespace": "sentry-otel-workshop"
+          }
+        ],
+        "to": [
+          {
+            "group": "",
+            "kind": "Service",
+            "name": "otel-agent"
+          }
+        ]
+      }
+    }
+  ]
+}

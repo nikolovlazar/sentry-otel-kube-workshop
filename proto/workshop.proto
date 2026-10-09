@@ -1,0 +1,32 @@
+syntax = "proto3";
+package workshop.v1;
+option go_package = "github.com/nikolovlazar/sentry-otel-kube-workshop/services/fulfillment/gen/workshop/v1;workshopv1";
+service Fulfillment {
+  rpc BeginRun(BeginRunRequest) returns (Run);
+  rpc SubmitOrder(SubmitOrderRequest) returns (Run);
+  rpc GetRun(GetRunRequest) returns (Run);
+  rpc ListRuns(ListRunsRequest) returns (ListRunsResponse);
+  rpc RecordFailure(RecordFailureRequest) returns (Run);
+  rpc RecordNotificationResult(RecordNotificationResultRequest) returns (Run);
+}
+message Run {
+  string run_id = 1;
+  string session_id = 2;
+  string scenario = 3;
+  string worker_mode = 4;
+  string status = 5;
+  string trace_id = 6;
+  int32 attempts = 7;
+  string failure_service = 8;
+  string error_code = 9;
+  string error_event_id = 10;
+  string created_at = 11;
+  string updated_at = 12;
+}
+message BeginRunRequest { string run_id = 1; string session_id = 2; string scenario = 3; string worker_mode = 4; string trace_id = 5; }
+message SubmitOrderRequest { string run_id = 1; string product_id = 2; int32 quantity = 3; int64 unit_price_cents = 4; }
+message GetRunRequest { string run_id = 1; }
+message ListRunsRequest { string session_id = 1; }
+message ListRunsResponse { repeated Run runs = 1; }
+message RecordFailureRequest { string run_id = 1; string failure_service = 2; string error_code = 3; string error_event_id = 4; }
+message RecordNotificationResultRequest { string run_id = 1; string message_id = 2; int32 attempt = 3; string outcome = 4; string error_code = 5; string error_event_id = 6; }
