@@ -313,9 +313,8 @@ def reset_demo():
     secrets();collector_config()
     kc('-n',OBS,'rollout','restart','daemonset/otel-agent','deployment/otel-gateway')
     for name in ['otel-agent','otel-gateway']:kc('-n',OBS,'rollout','status',('daemonset/' if name=='otel-agent' else 'deployment/')+name,'--timeout=120s')
-    for name in COMPONENTS:
-        kc('-n',APP,'scale','deployment/'+name,'--replicas=1')
-        kc('-n',APP,'rollout','status','deployment/'+name,'--timeout=120s')
+    for name in COMPONENTS:kc('-n',APP,'scale','deployment/'+name,'--replicas=1')
+    for name in COMPONENTS:kc('-n',APP,'rollout','status','deployment/'+name,'--timeout=120s')
     print('Synthetic workshop rows and Redis workshop:* keys reset; new session '+session)
 
 def up():

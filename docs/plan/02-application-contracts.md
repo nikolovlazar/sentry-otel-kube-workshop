@@ -14,10 +14,14 @@ Each run preserves immutable scenario/mode/trace ID; rollback restores inventory
 
 ## Completion checklist
 
-- [ ] Implementation complete
-- [ ] Automated checks complete
-- [ ] Live verification recorded where applicable
-- [ ] Documentation matches observed behavior
+- [x] Implementation complete
+- [x] Automated checks complete
+- [x] Live verification recorded where applicable
+- [x] Documentation matches observed behavior
+
+## Prerequisites, commands and expected results
+
+Use the [developer prerequisites](../../README.md#developer-tests) for `make test`; use a configured `make up` baseline for live checks. Run `make test`, then `make verify`. Expect validated contracts, separate schema ownership, inventory rollback, one order/publication per run and correct retry/DLQ states. The disposable Go harness command is `cd services/fulfillment && python3 tools/run_integration.py`; it must pass without changing workshop fixtures.
 
 ## HTTP and gRPC
 
@@ -31,19 +35,19 @@ Python GET `/v1/products/demo-widget` accepts validated run UUID, scenario, cach
 
 Catalog owns products in its schema; fulfillment owns runs/inventory/orders/outbox. Worker and web never access the DB. Order/run IDs are equal; quantities are fixed at1. Initial stock10000. No cross-schema foreign keys.
 
-SubmitOrder atomically commits inventory+order+outbox. Publisher resumes persisted W3C context, creates a producer span, and atomically deduplicates XADD by run ID. Stream `workshop:notifications`; group `notification-workers`; dedup `workshop:published`; attempts hash `workshop:attempts`; DLQ `workshop:dead-letters`; terminal DLQ index `workshop:dead-lettered`.
+SubmitOrder atomically commits inventory+order+outbox. Publisher resumes persisted W3C context, creates a producer span, and atomically deduplicates XADD by run ID. Stream `workshop:notifications`; group `notification-workers`; dedup `workshop:published`; attempts hash `workshop:attempts`; DLQ `workshop:dead-letters`; terminal DLQ index `workshop:dead-lettered`; durable SDK-error hash `workshop:error-outbox`.
 
-Worker ACK follows durable completion. Three attempts, delays250/500ms; XAUTOCLAIM resumes pending work. RecordNotificationResult is idempotent. Dedicated Redis allows reset of only `workshop:*`; session ID remains in records.
+Worker ACK follows durable completion. The normal retry budget is three attempts, with delays250/500ms; a crash can replay an attempt while preserving the same budget and idempotent effects. XAUTOCLAIM resumes pending work. RecordNotificationResult is idempotent. Dedicated Redis allows reset of only `workshop:*`; session ID remains in records.
 
 ## Exact run and request contract
 
 `POST /api/runs` accepts an allowlisted `scenario` and optional `workerMode`, plus the active session ID. The scenario strings are `full-journey`, `cache-miss-hit`, `slow-postgres`, `python-error`, `go-error`, `async-worker`, `next-error`, `browser-error`; worker modes are `success`, `recover`, `exhaust`. The async UI defaults to `exhaust`. Unknown values return400.
 
-Accepted background work returns202. Origin Next.js failure returns500; propagated downstream failure returns502. These bodies retain the run ID and diagnostic identifiers. Poll `GET /api/runs/:id` for durable state; listing returns the latest20 runs in the active session. Browser errors record only a valid event ID through `POST /api/runs/:id/browser-error`.
+Accepted background work returns202. Origin Next.js failure returns500; propagated downstream failure returns502. These bodies retain the run ID and diagnostic identifiers. Poll `GET /api/runs/:id` for durable state; listing returns the latest20 runs in the active session. Browser exceptions record only a valid event ID through `POST /api/runs/:id/browser-error`.
 
 Run JSON fields are `runId`, `sessionId`, `scenario`, `workerMode`, `status`, `traceId`, `attempts`, `failureService`, `errorCode`, `errorEventId`, `createdAt`, `updatedAt`. The authoritative protobuf uses corresponding snake-case field names and defines six RPCs. Go owns transitions from `running` to `queued`, `retrying`, and `completed`; `failed`/`dead_lettered` are terminal. Completion RPCs cannot alter an already terminal outcome.
 
-HTTP/gRPC dependency deadlines are3s. The UI polls1s for15s, then offers refresh. Catalog query parameters are validated; cache keys include the run ID for isolated demonstrations. No UI input accepts raw SQL, delay duration or arbitrary failure injection.
+HTTP/gRPC dependency deadlines are3s. The UI polls1s for15s, then offers refresh. Catalog query parameters are validated; the cache miss/hit scenario uses a run-specific key for an isolated demonstration, while ordinary lookups can use the shared key. No UI input accepts raw SQL, delay duration or arbitrary failure injection.
 
 ## Persistence and idempotence
 

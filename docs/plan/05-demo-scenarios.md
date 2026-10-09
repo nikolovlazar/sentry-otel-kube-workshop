@@ -10,14 +10,14 @@ Run each card; inspect trace, issue and logs; confirm SQL rollback, cache transi
 
 ## Acceptance
 
-Nine permutations pass; origin exceptions captured once; exactly three async attempts; one dead letter on exhaustion; cache remains deterministic with prior activity.
+Nine permutations pass; origin exceptions captured once; exactly three async attempts in an uninterrupted run; one dead letter on exhaustion; cache remains deterministic with prior activity.
 
 ## Completion checklist
 
-- [ ] Implementation complete
-- [ ] Automated checks complete
-- [ ] Live verification recorded where applicable
-- [ ] Documentation matches observed behavior
+- [x] Implementation complete
+- [x] Automated checks complete
+- [x] Live verification recorded where applicable
+- [x] Documentation matches observed behavior
 
 ## Exact behavior
 
@@ -37,15 +37,15 @@ UI displays run/trace IDs,status,attempts,origin and event ID with Sentry naviga
 
 | Scenario | Fault/behavior | Terminal state | Evidence |
 | --- | --- | --- | --- |
-| Full journey | All services, one queue delivery | completed, attempt1 | One order and stock decrement, four workloads in one trace |
+| Complete journey | All services, one queue delivery | completed, attempt1 | One order and stock decrement, four workloads in one trace |
 | Cache miss/hit | Fresh run-specific key, two lookups | completed | One miss plus one hit; one SQL product read |
-| Slow PostgreSQL | Cache bypass, `pg_sleep(1.2)` | completed | DB span at least1.2s |
+| Slow database | Cache bypass, `pg_sleep(1.2)` | completed | DB span at least1.2s |
 | Python error | Raise after product read | failed | Catalog event linked to `catalog.lookup`; no order |
 | Go error | Fail after inventory UPDATE before commit | failed | Fulfillment event and rollback; stock unchanged |
 | Async recover | Fail attempts1/2, succeed3 | completed | Three sibling consumer spans, no final issue/DLQ |
 | Async exhaust | Fail all three attempts | dead_lettered | One stable Node event, one DLQ record, original consumer span |
 | Next.js error | Fail after BeginRun, before catalog | failed | Web server event, no catalog/order |
-| Browser error | Catch deliberate exception inside action span | failed | Browser event; same trace as BeginRun |
+| Browser exception | Catch deliberate exception inside action span | failed | Browser event; same trace as BeginRun |
 
 Run buttons are serialized in the UI. Every result exposes run/trace/event identifiers and Sentry links. Upstream services log/mark the failure without another issue capture. Slow/cache scenarios always work independently of previous activity.
 

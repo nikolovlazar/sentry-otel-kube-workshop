@@ -4,9 +4,9 @@ Start from the working baseline. The exercises inspect and alter configuration; 
 
 ## Lab 1 — bring up the cluster
 
-Prerequisites: Docker-compatible runtime, own Sentry organization/team and five project DSNs. Fill ignored `.env`; choose a read-capable collector token or static exporter mode. Run `make up`, then `make verify`.
+Prerequisites: Docker-compatible runtime, own Sentry organization/team, five project DSNs and a source-map upload token. Fill ignored `.env`; choose a read-capable collector token or static exporter mode. Run `make bootstrap`, `make doctor`, `make up` and `make verify` in that order. The full workshop build requires `SENTRY_SOURCE_MAP_AUTH_TOKEN`; both JavaScript builds automatically upload their matching maps and wait for processing before deployment. Failed upload/processing stops the build. No separate upload command is needed before the JavaScript error exercises. Automated Sentry verification also needs Events Read; see the [credential table](../plan/04-collector-and-sentry.md#credential-scope-by-purpose).
 
-Checkpoint: localhost control centre loads, all workloads are ready, Full journey reaches `completed`. Inspect the named context using `.local/bin/kubectl --kubeconfig .local/kubeconfig --context kind-sentry-otel-workshop get pods -A`.
+Checkpoint: localhost control centre loads, all workloads are ready, Complete journey reaches `completed`. Inspect the named context using `.local/bin/kubectl --kubeconfig .local/kubeconfig --context kind-sentry-otel-workshop get pods -A`.
 
 ## Lab 2 — follow collection
 
@@ -16,6 +16,8 @@ Run one workflow and find its exact run ID in Sentry Logs. Compare its log trace
 
 Checkpoint: a log opens in the same trace as the application span.
 
+Compare exporter retry settings. The agent retries its gateway hop; static OTLP/HTTP explicitly retries transient remote failures. The pinned main Sentry Exporter persists unsent batches but does not retry failed Sentry HTTP deliveries. See [recovery limits](../plan/04-collector-and-sentry.md#retry-and-persistence-limits).
+
 ## Lab 3 — switch export routes
 
 Change only ignored `.env`: `SENTRY_EXPORTER_MODE=otlphttp`. Run `make deploy`; trigger a fresh workflow and verify its telemetry. Restore `sentry` mode and redeploy if you have the token.
@@ -24,7 +26,7 @@ Checkpoint: project destination and application behavior remain the same. There 
 
 ## Lab 4 — error plus trace plus logs
 
-Run Python catalog error. Open the issue, inspect the source line, open its trace, and filter logs to the run. Repeat with Go fulfillment error and confirm inventory rollback using `make verify`.
+Run Python exception. Open the issue, inspect the source line, open its trace, and filter logs to the run. Repeat with Go exception and confirm inventory rollback using `make verify`.
 
 Checkpoint: one originating SDK error event per run, active span correlation, and diagnostic logs around the failure.
 
@@ -49,7 +51,7 @@ Checkpoint: broken carrier produces a split; restoring propagation reconnects th
 
 ## Lab 6 — async and pod identity
 
-Compare worker Recover and Exhaust modes. Inspect attempts and consumer parentage. Run the deterministic crash check from the repository root after installing the [developer test prerequisites](../../README.md#developer-tests):
+In Background job, compare Recover on attempt 3 and Exhaust → dead letter modes. Inspect attempts and consumer parentage. Run the deterministic crash check from the repository root after installing the [developer test prerequisites](../../README.md#developer-tests):
 
 ```sh
 make verify-recovery
@@ -73,7 +75,7 @@ Record the catalog pod identity, replace its pod, and read its new identity:
 .local/bin/kubectl --kubeconfig .local/kubeconfig --context kind-sentry-otel-workshop -n sentry-otel-workshop get pods -l app.kubernetes.io/name=catalog -o custom-columns=NAME:.metadata.name,UID:.metadata.uid
 ```
 
-Run another Full journey and compare the old/new application pod UID and name in Sentry with these values.
+Run another Complete journey and compare the old/new application pod UID and name in Sentry with these values.
 
 Checkpoint: one terminal business effect after redelivery, and telemetry reflects the replacement application pod.
 

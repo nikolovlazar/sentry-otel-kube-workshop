@@ -10,14 +10,18 @@ Initialize providers before apps; configure current language event-linking integ
 
 ## Acceptance
 
-Same trace ID across runtimes and queue; every SDK error links to its active span; every application log has native OTLP context; source locations readable.
+Same trace ID across runtimes and queue; every SDK error links to its active span; every workflow log retains native OTLP context; source locations readable.
 
 ## Completion checklist
 
-- [ ] Implementation complete
-- [ ] Automated checks complete
-- [ ] Live verification recorded where applicable
-- [ ] Documentation matches observed behavior
+- [x] Implementation complete
+- [x] Automated checks complete
+- [x] Live verification recorded where applicable
+- [x] Documentation matches observed behavior
+
+## Prerequisites, commands and expected results
+
+Start the configured cluster with `make up`; project DSNs, service mappings and the separate upload token must be set. Run `make verify-sentry` with the [verification read scopes](04-collector-and-sentry.md#credential-scope-by-purpose), then trigger the browser exception in the UI. Expect shared trace IDs, exact origin-error span IDs, native log context, original application pod metadata and readable source. Use the runtime initialization and log-schema sections below to locate a failed assertion.
 
 ## Ownership by runtime
 
@@ -31,7 +35,7 @@ Service resource: name/namespace/version/environment and podUID/name/namespace/n
 
 JSON stdout keys: timestamp,severity,body,service.name,log.record_id,trace_id,span_id,trace_flags,workshop.*. One stdout path; SDK log exporting is disabled. Span events alone are not Issues. Errors are captured once at origin; retries log each attempt and capture only terminal exhaustion.
 
-Release/version labels must match the running code. JavaScript debug IDs are injected before image creation; upload maps for those exact assets, then inspect new SDK errors for source context.
+Release/version labels must match the running code. JavaScript debug IDs are injected during `npm run build`. The same build uploads maps for those exact assets and waits for Sentry processing before the workshop images are deployed. Inspect fresh SDK errors for source context.
 
 ## Runtime initialization and ownership
 
@@ -44,10 +48,10 @@ Backend SDK tracing rates/samplers stay unset. OTel uses an AlwaysOn sampler wit
 
 ## Log schema and correlation
 
-JSON stdout contains timestamp, severity, message, `log.record_id`, service, `trace_id`, `span_id`, `trace_flags` and scalar workshop metadata. Resource attributes include service namespace/version, environment, original pod UID/name, namespace and node. Error logs use the same active span as SDK capture.
+JSON stdout contains timestamp, severity, body, `log.record_id`, service, `trace_id`, `span_id`, `trace_flags` and scalar workshop metadata. Resource attributes include service namespace/version, environment, original pod UID/name, namespace and node. Error logs use the same active span as SDK capture. Startup and infrastructure logs outside an active workflow can be untraced. Kubernetes pod metadata applies to in-cluster workloads; browser telemetry is outside the cluster and shares the web Sentry project without a pod UID.
 
 The agent parses container framing and JSON, normalizes trace flags to a byte string, and assigns native OTLP LogRecord TraceID/SpanID fields. Ordinary attributes named trace_id cannot establish native correlation. Only stdout exports application logs: SDK logging and SDK OTLP log exporters stay disabled.
 
-Use `make verify-sentry` after `make source-map-upload`. SDK errors must resolve to the same trace and an existing span in the corresponding workload project. Upload maps from the exact running images; old events are not proof of new source-map processing. Worker delivery preserves the original error stack and consumer span even after restart.
+Use `make verify-sentry` after `make up` or `make build` plus `make deploy`. Automatic build-time uploads must finish processing first. SDK errors must resolve to the same trace and an existing span in the corresponding workload project. The optional `make source-map-upload` recovery command verifies the exact running images before re-uploading; old events are not proof of new source-map processing. Worker delivery preserves the original error stack and consumer span even after restart.
 
 Validated workflow metadata also travels in W3C baggage. Small span processors copy the three allowlisted identifiers into child spans; logs use the same context. Automatic frontend/framework spans that begin before the request body has been parsed cannot know a run ID yet; explicit business spans and subsequent dependency spans carry it. `workshop.step` names the active operation, with attempt numbers on consumer spans.

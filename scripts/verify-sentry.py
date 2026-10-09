@@ -33,10 +33,15 @@ def api(path, params=None):
     url = w.CFG['SENTRY_BASE_URL'].rstrip('/') + '/api/0/' + path.lstrip('/')
     if params: url += '?' + urlencode(params, doseq=True)
     request = Request(url, headers={'Authorization': 'Bearer ' + w.CFG['SENTRY_AUTH_TOKEN'], 'Accept': 'application/json'})
-    try:
-        with urlopen(request, timeout=15) as response: return json.load(response)
-    except HTTPError as error:
-        raise RuntimeError(f'Sentry API returned HTTP{error.code} for {path}') from None
+    for attempt in range(3):
+        try:
+            with urlopen(request, timeout=15) as response: return json.load(response)
+        except HTTPError as error:
+            if error.code in {429, 500, 502, 503, 504} and attempt < 2:
+                error.close()
+                time.sleep(.5 * (2 ** attempt))
+                continue
+            raise RuntimeError(f'Sentry API returned HTTP{error.code} for {path}') from None
 
 
 def required_services(scenario):
@@ -52,6 +57,19 @@ def readable_frames(event):
             for value in entry.get('data', {}).get('values', []):
                 frames.extend((value.get('stacktrace') or {}).get('frames', []))
     return [frame for frame in frames if re.search(r'\.(py|go|tsx?)$', frame.get('filename') or frame.get('absPath') or '') and frame.get('function') and frame.get('lineNo')]
+
+
+def unique_log_identities(rows):
+    """Collapse identical query rows, while retaining separate ingested log identities."""
+    indexed = {}
+    for row in rows:
+        identity = row.get('id')
+        if not identity:
+            raise ValueError('Sentry log query returned no native log identity')
+        if identity in indexed and indexed[identity] != row:
+            raise ValueError('Sentry log query returned conflicting rows for one native identity')
+        indexed[identity] = row
+    return list(indexed.values()), len(rows) - len(indexed)
 
 
 def parentage_problem(spans, scenario):
@@ -104,7 +122,13 @@ def main():
         spans = []; logs = []; event = None; reason = ''
         while time.monotonic() < deadline:
             spans = api(org, {**params, 'dataset': 'spans', 'field': ['trace', 'span_id', 'parent_span', 'span.name', 'span.description', 'span.duration', 'span.op', 'project', 'resource.service.name', 'resource.service.namespace', 'resource.service.version', 'resource.k8s.pod.uid', 'resource.k8s.pod.name', 'resource.k8s.namespace.name', 'resource.k8s.node.name', 'resource.k8s.cluster.name']}).get('data', [])
-            logs = api(org, {**params, 'dataset': 'logs', 'field': ['trace', 'span_id', 'message', 'project', 'service.name', 'log.record_id', 'resource.service.namespace', 'resource.service.version', 'resource.k8s.pod.uid', 'resource.k8s.pod.name', 'resource.k8s.namespace.name', 'resource.k8s.node.name', 'resource.k8s.cluster.name']}).get('data', [])
+            logs = api(org, {**params, 'dataset': 'logs', 'field': ['id', 'trace', 'span_id', 'message', 'project', 'service.name', 'log.record_id', 'resource.service.namespace', 'resource.service.version', 'resource.k8s.pod.uid', 'resource.k8s.pod.name', 'resource.k8s.namespace.name', 'resource.k8s.node.name', 'resource.k8s.cluster.name']}).get('data', [])
+            try:
+                logs, duplicate_query_rows = unique_log_identities(logs)
+            except ValueError as error:
+                reason = str(error)
+                time.sleep(3)
+                continue
             span_ids = {span['span_id'] for span in spans}
             missing_spans = required_projects - {span['project'] for span in spans}
             missing_logs = required_log_projects - {log['project'] for log in logs}
@@ -146,7 +170,7 @@ def main():
             time.sleep(3)
         else: raise SystemExit('Sentry verification timed out for ' + run['runId'] + ': ' + reason)
         frames = readable_frames(event) if event else []
-        evidence['runs'].append({**run, 'spanCount': len(spans), 'logCount': len(logs), 'spans': spans, 'logs': logs, 'errorTraceContext': event.get('contexts', {}).get('trace') if event else None, 'readableSourceFrames': frames})
+        evidence['runs'].append({**run, 'spanCount': len(spans), 'logCount': len(logs), 'duplicateLogQueryRows': duplicate_query_rows, 'spans': spans, 'logs': logs, 'errorTraceContext': event.get('contexts', {}).get('trace') if event else None, 'readableSourceFrames': frames})
         w.private_write(w.LOCAL / 'verification/sentry.json', json.dumps(evidence, indent=2))
         print(f'{scenario}/{mode}: {run["status"]}, trace {trace}, {len(spans)} spans/{len(logs)} logs' + (', readable error ' + run['errorEventId'] if event else ''), flush=True)
     print('Eight live Sentry permutations passed; browser errors are verified separately in the UI. Evidence: .local/verification/sentry.json')

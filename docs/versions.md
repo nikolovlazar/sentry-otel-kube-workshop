@@ -14,7 +14,7 @@ Verified on 2026-10-09. Runtime manifests pin published image digests; local app
 | PostgreSQL | 17.11 | [official image](https://hub.docker.com/_/postgres) |
 | Redis | 7.4.11 | [official image](https://hub.docker.com/_/redis) |
 | Network probe | BusyBox 1.37.0 | [official image](https://hub.docker.com/_/busybox) |
-| Source-map upload CLI | @sentry/cli 3.8.0 | Project-local worker development dependency, locked in `package-lock.json` |
+| Source-map upload CLI | @sentry/cli 3.8.0 | Development dependency in both JavaScript packages, locked in their `package-lock.json` files |
 
 Bootstrap downloads the exact kind, kubectl, Helm and Node release artifacts for macOS/Linux arm64/amd64 and verifies their publisher-hosted SHA256 checksums before installation into ignored `.local/bin`. It does not update global tools. The installed Sentry CLI may coexist with the project-local SDK CLI; source-map uploads use the locked SDK CLI to avoid global-version differences.
 
@@ -34,7 +34,7 @@ The cluster uses Kubernetes 1.36 rather than kind's 1.37 default because release
 
 ## Local resource budget
 
-The attendee baseline is one kind node and one replica per custom service. Give the container runtime 4 CPUs, 8 GiB memory and 20 GiB free disk; 16 GiB host memory is recommended. Builds run through the host runtime rather than as cluster Jobs.
+The attendee baseline is one kind node and one replica per custom service. Give the container runtime 4 CPUs, 8 GiB memory and 20 GiB free disk; 16 GiB host memory is recommended. The live presenter runtime allocation was 7 CPUs and 18 GiB memory. That allocation was exercised; 4 CPUs/8 GiB is the lower sizing requirement and has not been separately benchmarked. Builds run through the host runtime rather than as cluster Jobs.
 
 The four applications, storage, collectors, Envoy proxy and controller request about 1.5 GiB of memory and have combined 3.25 GiB primary-container limits. The generated shutdown-manager helper adds a 32 MiB request. Allow additional room for two small migration Jobs and Kubernetes system components. Next.js/worker run as numeric UID1000. The node log agent runs as root with dropped capabilities, no privilege escalation, read-only pod-log access and a dedicated state directory; this is the explicit exception needed to read node log files.
 
@@ -64,3 +64,7 @@ The deployment entrypoint is `infra/kubernetes/kustomization.yaml`; the orchestr
 The JavaScript gRPC client is pinned to1.14.6 after auditing1.14.3 revealed current high-severity advisories; both final dependency audits reported zero vulnerabilities. The catalog intentionally uses the HTTP-only OTel exporter; Sentry's broad optional OTLP extra includes an unused gRPC exporter. Public lockfiles keep canonical registry URLs and unchanged artifact hashes. Local approved registry mirrors remain usable through package-manager configuration.
 
 The Envoy shutdown helper adds a32MiB memory request. The primary-container totals exclude this helper, transient migrations and system components; the helper uses the pinned Envoy Gateway image. Live resource usage is recorded during rehearsal.
+
+## Final local verification snapshot
+
+Application release: `6f4c13254eb81e0f1e40ccfe7776639963a491e9`. The presenter's ignored local configuration freezes this verified release while later commits finish documentation, verification and reset orchestration. Fresh checkouts use their current Git SHA by default. Remove/update both `SERVICE_VERSION` and `SENTRY_RELEASE` overrides before changing application source, then build/deploy and verify again. See the [verification record](verification.md) for final rehearsal results and the tested resource allocation.

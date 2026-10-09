@@ -14,10 +14,37 @@ Healthy distributed trace; exact-span error links; native log trace context; cor
 
 ## Completion checklist
 
-- [ ] Implementation complete
-- [ ] Automated checks complete
-- [ ] Live verification recorded where applicable
-- [ ] Documentation matches observed behavior
+- [x] Implementation complete
+- [x] Automated checks complete
+- [x] Live verification recorded where applicable
+- [x] Documentation matches observed behavior
+
+## Architecture
+
+```mermaid
+flowchart LR
+  Browser --> Envoy[Envoy Gateway]
+  Envoy --> Web[Next.js web / BFF]
+  Web -->|HTTP| Catalog[Python catalog]
+  Web -->|gRPC| Fulfillment[Go fulfillment]
+  Catalog --> Postgres[(PostgreSQL)]
+  Catalog --> Redis[(Redis cache / Streams)]
+  Fulfillment --> Postgres
+  Fulfillment -->|Outbox publication| Redis
+  Redis --> Worker[Node notification worker]
+  Worker -->|gRPC result| Fulfillment
+  Web & Catalog & Fulfillment & Worker -->|Traces / stdout logs| Agent[Collector agent]
+  Agent --> Gateway[Collector gateway]
+  Gateway -->|OTLP| Sentry
+  Web & Catalog & Fulfillment & Worker -->|SDK errors| Sentry
+  Browser -->|SDK errors / browser spans| Sentry
+```
+
+## Prerequisites and runnable baseline
+
+Use the [README prerequisites](../../README.md#quick-start): supported host, selected running Docker context, five Sentry projects, and ignored `.env` with project DSNs, read/upload credentials and database/Redis passwords. Host development tests additionally need the [developer prerequisites](../../README.md#developer-tests).
+
+From the repository root, run `make bootstrap`, `make doctor`, `make up`, then `make verify-sentry`. Expected results: pinned tools pass checks, the named local cluster and four application workloads become ready, JavaScript maps finish processing before deployment, and localhost:8080 serves the control centre. Complete journey reaches `completed`; marked workflows produce correctly routed spans/logs and origin SDK errors with exact-span links. Run all UI cards, including the browser exception, for the full acceptance gate.
 
 ## Ordered milestones
 
