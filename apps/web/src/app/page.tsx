@@ -168,53 +168,56 @@ export default function ControlCentre() {
     setNotice("");
     try {
       const settings = config ?? (await ensureBrowserSentry());
-      let run = await Sentry.startSpan(
-        {
-          name: `workshop.action ${scenario}`,
-          op: "ui.action",
-          attributes: {
-            "workshop.scenario": scenario,
-            "workshop.step": "ui.action",
-            "workshop.session_id": settings.sessionId,
+      let run = await Sentry.startNewTrace(() =>
+        Sentry.startSpan(
+          {
+            name: `workshop.action ${scenario}`,
+            op: "ui.action",
+            attributes: {
+              "workshop.scenario": scenario,
+              "workshop.step": "ui.action",
+              "workshop.session_id": settings.sessionId,
+            },
           },
-        },
-        async (span) => {
-          const started = await request<Run>("/api/runs", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({
-              scenario,
-              workerMode: scenario === "async-worker" ? workerMode : "success",
-              sessionId: settings.sessionId,
-            }),
-          });
-          span.setAttributes({
-            "workshop.run_id": started.runId,
-            "workshop.trace_id": started.traceId,
-          });
-          if (scenario !== "browser-error") return started;
-          // This caught exception is captured once while the initiating browser span is active.
-          let eventId = "";
-          try {
-            throw new Error(
-              "Deliberate browser workflow failure: demo control failed to update",
-            );
-          } catch (error) {
-            eventId = Sentry.withScope((scope) => {
-              scope.setTags({
-                "workshop.run_id": started.runId,
-                "workshop.scenario": scenario,
-                "workshop.session_id": settings.sessionId,
-              });
-              return Sentry.captureException(error);
+          async (span) => {
+            const started = await request<Run>("/api/runs", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({
+                scenario,
+                workerMode:
+                  scenario === "async-worker" ? workerMode : "success",
+                sessionId: settings.sessionId,
+              }),
             });
-          }
-          return request<Run>(`/api/runs/${started.runId}/browser-error`, {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ errorEventId: eventId }),
-          });
-        },
+            span.setAttributes({
+              "workshop.run_id": started.runId,
+              "workshop.trace_id": started.traceId,
+            });
+            if (scenario !== "browser-error") return started;
+            // This caught exception is captured once while the initiating browser span is active.
+            let eventId = "";
+            try {
+              throw new Error(
+                "Deliberate browser workflow failure: demo control failed to update",
+              );
+            } catch (error) {
+              eventId = Sentry.withScope((scope) => {
+                scope.setTags({
+                  "workshop.run_id": started.runId,
+                  "workshop.scenario": scenario,
+                  "workshop.session_id": settings.sessionId,
+                });
+                return Sentry.captureException(error);
+              });
+            }
+            return request<Run>(`/api/runs/${started.runId}/browser-error`, {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ errorEventId: eventId }),
+            });
+          },
+        ),
       );
       remember(run);
       for (
