@@ -1,7 +1,6 @@
 import { NodeSDK } from "@opentelemetry/sdk-node";
 import { resourceFromAttributes } from "@opentelemetry/resources";
 import {
-  AlwaysOnSampler,
   BatchSpanProcessor,
 } from "@opentelemetry/sdk-trace-base";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
@@ -12,6 +11,7 @@ import {
 } from "@opentelemetry/core";
 import * as Sentry from "@sentry/nextjs";
 import { WorkflowAttributesProcessor } from "./workflow-context";
+import { HealthCheckSampler } from "./health-check-sampler";
 const globalTelemetry = globalThis as typeof globalThis & {
   workshopOtel?: NodeSDK;
 };
@@ -36,7 +36,7 @@ if (!globalTelemetry.workshopOtel) {
       "k8s.namespace.name": process.env.POD_NAMESPACE ?? "",
       "k8s.node.name": process.env.NODE_NAME ?? "",
     }),
-    sampler: new AlwaysOnSampler(),
+    sampler: new HealthCheckSampler(),
     textMapPropagator: new CompositePropagator({
       propagators: [
         new W3CTraceContextPropagator(),

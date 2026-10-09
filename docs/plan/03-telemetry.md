@@ -55,3 +55,9 @@ The agent parses container framing and JSON, normalizes trace flags to a byte st
 Use `make verify-sentry` after `make up` or `make build` plus `make deploy`. Automatic build-time uploads must finish processing first. SDK errors must resolve to the same trace and an existing span in the corresponding workload project. The optional `make source-map-upload` recovery command verifies the exact running images before re-uploading; old events are not proof of new source-map processing. Worker delivery preserves the original error stack and consumer span even after restart.
 
 Validated workflow metadata also travels in W3C baggage. Small span processors copy the three allowlisted identifiers into child spans; logs use the same context. Automatic frontend/framework spans that begin before the request body has been parsed cannot know a run ID yet; explicit business spans and subsequent dependency spans carry it. `workshop.step` names the active operation, with attempt numbers on consumer spans.
+
+## Health-check exclusion
+
+Next.js drops server spans for `/health/live` and `/health/ready` at sampling time. Locally unsampled parents also keep their framework descendants unsampled, so excluding only the named route cannot leave orphan background spans. Normal workshop requests retain 100% sampling, including incoming unsampled remote carriers. Health responses and Kubernetes probes remain enabled. Python already excludes its health routes; Go and worker dependency/queue housekeeping remain untraced.
+
+Run `npm --prefix apps/web test` for probe/descendant and normal-workflow regression tests. After rebuild/deployment, verify live readiness, observe a quiet idle interval and trigger a normal distributed workflow. The private follow-up record is `.local/verification/health-checks.json`.
