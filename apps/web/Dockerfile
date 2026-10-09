@@ -10,6 +10,8 @@ FROM node:24.21.0-bookworm-slim@sha256:d6aa754f16b3197301076f047b5def2f02ea1dbbc
 WORKDIR /app
 ENV NODE_ENV=production PORT=3000 HOSTNAME=0.0.0.0 NEXT_TELEMETRY_DISABLED=1 WORKSHOP_PROTO_PATH=/app/proto/workshop.proto
 COPY --from=build /workspace/apps/web/.next/standalone ./
+# Standalone tracing omits server chunk maps; retain the exact builder assets for symbolication.
+COPY --from=build /workspace/apps/web/.next/server ./apps/web/.next/server
 COPY --from=build /workspace/apps/web/.next/static ./apps/web/.next/static
 COPY --from=build /workspace/proto ./proto
 USER node
