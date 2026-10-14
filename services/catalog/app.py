@@ -88,12 +88,13 @@ async def product(run_id: UUID, scenario: Scenario = "full-journey", cache_polic
             key = "workshop:catalog:" + (str(run_id) if scenario == "cache-miss-hit" or cache_policy == "fresh" else "shared") + ":demo-widget"
             if not bypass:
                 cached = await cache.get(key)
-                if cached:
-                    emit("Catalog cache hit", **attributes, **{"cache.hit": True})
-                    span.set_attribute("cache.hit", True)
+                if cached is not None:
+                    span.set_attribute("workshop.cache_hit", True)
                     return {**json.loads(cached), "cached": True}
-            emit("Catalog cache bypass" if bypass else "Catalog cache miss", **attributes, **{"cache.hit": False})
-            span.set_attribute("cache.hit", False)
+            if bypass:
+                emit("Catalog cache bypass", **attributes)
+            else:
+                span.set_attribute("workshop.cache_hit", False)
             if scenario == "postgres-lock-timeout":
                 result = await read_product(lock_timeout=True)
             else:

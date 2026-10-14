@@ -65,7 +65,7 @@ def test_cache_span_describes_command_without_payload_or_run_id(monkeypatch):
     with provider.get_tracer("test").start_as_current_span("SET") as span:
         redis_request_hook(span, None, ("SET", f"workshop:catalog:{run_id}:demo-widget", "private payload"), {})
     result, = exporter.get_finished_spans()
-    assert result.name == "SET workshop:catalog"
+    assert result.name == "workshop:catalog:<scope>:demo-widget"
     assert result.attributes["db.statement"] == "SET workshop:catalog:<scope>:demo-widget"
     assert result.attributes["db.system.name"] == "redis"
     assert "private payload" not in str(result.attributes)
@@ -143,3 +143,71 @@ async def test_readiness_connection_is_untagged(client, mocked_cache, monkeypatc
         response = await client.get("/health/ready")
     assert response.status_code == 200
     connect.assert_awaited_once_with(os.environ["DATABASE_URL"], connect_timeout=2)
+
+
+@pytest.mark.parametrize("value", ["", "café", b"\x00\xff"])
+async def test_redis_cache_spans_follow_sentry_conventions(recording_tracer, value):
+    from opentelemetry.instrumentation.redis import _async_traced_execute_factory
+    from redis.asyncio import Redis
+    from telemetry import redis_request_hook, redis_response_hook
+    tracer, exporter = recording_tracer
+    execute = _async_traced_execute_factory(tracer, redis_request_hook, redis_response_hook)
+    cache = Redis(decode_responses=True)
+    key = f"workshop:catalog:{uuid4()}:demo-widget"
+    async def miss(*args, **kwargs): return None
+    async def write(*args, **kwargs): return True
+    async def hit(*args, **kwargs): return value
+    with tracer.start_as_current_span("catalog.lookup") as parent:
+        await execute(miss, cache, ("GET", key), {})
+        await execute(write, cache, ("SET", key, value, "EX", 300), {})
+        await execute(hit, cache, ("GET", key), {})
+    spans = exporter.get_finished_spans()
+    reads = [s for s in spans if s.attributes.get("sentry.op") == "cache.get"]
+    puts = [s for s in spans if s.attributes.get("sentry.op") == "cache.put"]
+    assert len(reads) == 2 and len(puts) == 1
+    assert [s.attributes["cache.hit"] for s in reads] == [False, True]
+    size = len(value.encode("utf-8") if isinstance(value, str) else value)
+    assert "cache.item_size" not in reads[0].attributes
+    assert reads[1].attributes["cache.item_size"] == size
+    assert puts[0].attributes["cache.item_size"] == size
+    assert puts[0].attributes["cache.ttl"] == 300
+    assert puts[0].attributes["cache.write"] is True
+    assert "cache.hit" not in puts[0].attributes
+    for span in [*reads, *puts]:
+        assert span.attributes["network.peer.address"] == "localhost"
+        assert span.attributes["network.peer.port"] == 6379
+        assert span.parent.span_id == parent.get_span_context().span_id
+        assert span.attributes["cache.key"] == ("workshop:catalog:<scope>:demo-widget",)
+        assert key not in str(span.attributes)
+    await cache.aclose()
+
+
+async def test_other_redis_operations_are_not_cache_spans(recording_tracer):
+    from opentelemetry.instrumentation.redis import _async_traced_execute_factory
+    from redis.asyncio import Redis
+    from telemetry import redis_request_hook, redis_response_hook
+    tracer, exporter = recording_tracer
+    execute = _async_traced_execute_factory(tracer, redis_request_hook, redis_response_hook)
+    cache = Redis()
+    async def response(*args, **kwargs): return b"value"
+    for args in [("GET", "other:key"), ("HGET", "workshop:published", "run"), ("PING",)]:
+        await execute(response, cache, args, {})
+    assert all(not any(k.startswith("cache.") or k == "sentry.op" for k in s.attributes) for s in exporter.get_finished_spans())
+    await cache.aclose()
+
+
+async def test_cache_read_failure_is_error_without_fabricated_miss(recording_tracer):
+    from opentelemetry.instrumentation.redis import _async_traced_execute_factory
+    from redis.asyncio import Redis
+    from telemetry import redis_request_hook, redis_response_hook
+    tracer, exporter = recording_tracer
+    execute = _async_traced_execute_factory(tracer, redis_request_hook, redis_response_hook)
+    cache = Redis()
+    async def fail(*args, **kwargs): raise ConnectionError("synthetic cache failure")
+    with pytest.raises(ConnectionError):
+        await execute(fail, cache, ("GET", "workshop:catalog:shared:demo-widget"), {})
+    span, = exporter.get_finished_spans()
+    assert span.status.status_code is app.StatusCode.ERROR
+    assert span.attributes["sentry.op"] == "cache.get"
+    assert "cache.hit" not in span.attributes
+    await cache.aclose()

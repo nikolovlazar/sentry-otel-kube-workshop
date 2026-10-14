@@ -94,6 +94,43 @@ def parentage_problem(spans, scenario):
     return ""
 
 
+def cache_problem(spans, logs):
+    """Accept cache semantics and prove that only the miss reads the product DB."""
+    catalog = [s for s in spans if s['project'] == PREFIX + 'catalog']
+    gets = [s for s in catalog if s.get('span.op') == 'cache.get']
+    puts = [s for s in catalog if s.get('span.op') == 'cache.put']
+    if len(gets) != 2 or len(puts) != 1:
+        return 'cache demo must export two cache.get spans and one cache.put span'
+    misses = [s for s in gets if s.get('cache.hit') is False]
+    hits = [s for s in gets if s.get('cache.hit') is True]
+    if len(misses) != 1 or len(hits) != 1:
+        return 'cache.get spans must record one miss and one hit'
+    if puts[0].get('tags[cache.ttl,number]') != 300 or not puts[0].get('tags[cache.write,boolean]'):
+        return 'cache.put must record a successful write with 300-second TTL'
+    if not hits[0].get('cache.item_size') or hits[0].get('cache.item_size') != puts[0].get('cache.item_size'):
+        return 'cache hit/write must carry matching product byte sizes'
+    by_id = {s['span_id']: s for s in catalog}
+    def under(span, ancestor):
+        parent = span.get('parent_span')
+        visited = set()
+        while parent in by_id and parent not in visited:
+            if parent == ancestor: return True
+            visited.add(parent)
+            parent = by_id[parent].get('parent_span')
+        return False
+    reads = [s for s in catalog if 'SELECT product_id' in (s.get('span.description') or '')]
+    miss_parent, hit_parent = misses[0].get('parent_span'), hits[0].get('parent_span')
+    if miss_parent == hit_parent or len(reads) != 1 or not under(reads[0], miss_parent) or under(reads[0], hit_parent):
+        return 'only the cache miss lookup may contain the product SELECT'
+    if puts[0].get('parent_span') != miss_parent:
+        return 'cache write must belong to the miss lookup'
+    for span, message in [(misses[0], 'Catalog cache miss'), (hits[0], 'Catalog cache hit')]:
+        matches = [l for l in logs if l.get('message') == message]
+        if len(matches) != 1 or matches[0].get('span_id') != span['span_id']:
+            return 'each cache outcome must have one log on its cache.get span'
+    return ''
+
+
 def main():
     w.require(['SENTRY_AUTH_TOKEN', 'SENTRY_ORG_SLUG', 'SENTRY_BASE_URL'])
     w.forward()
@@ -121,7 +158,7 @@ def main():
         params = {'statsPeriod': '1h', 'query': 'trace:' + trace, 'per_page': 100}
         spans = []; logs = []; event = None; reason = ''
         while time.monotonic() < deadline:
-            spans = api(org, {**params, 'dataset': 'spans', 'field': ['trace', 'span_id', 'parent_span', 'span.name', 'span.description', 'span.duration', 'span.op', 'project', 'resource.service.name', 'resource.service.namespace', 'resource.service.version', 'resource.k8s.pod.uid', 'resource.k8s.pod.name', 'resource.k8s.namespace.name', 'resource.k8s.node.name', 'resource.k8s.cluster.name']}).get('data', [])
+            spans = api(org, {**params, 'dataset': 'spans', 'field': ['trace', 'span_id', 'parent_span', 'span.name', 'span.description', 'span.duration', 'span.op', 'cache.hit', 'cache.item_size', 'tags[cache.ttl,number]', 'tags[cache.write,boolean]', 'project', 'resource.service.name', 'resource.service.namespace', 'resource.service.version', 'resource.k8s.pod.uid', 'resource.k8s.pod.name', 'resource.k8s.namespace.name', 'resource.k8s.node.name', 'resource.k8s.cluster.name']}).get('data', [])
             logs = api(org, {**params, 'dataset': 'logs', 'field': ['id', 'trace', 'span_id', 'message', 'project', 'service.name', 'log.record_id', 'resource.service.namespace', 'resource.service.version', 'resource.k8s.pod.uid', 'resource.k8s.pod.name', 'resource.k8s.namespace.name', 'resource.k8s.node.name', 'resource.k8s.cluster.name']}).get('data', [])
             try:
                 logs, duplicate_query_rows = unique_log_identities(logs)
@@ -136,6 +173,8 @@ def main():
                 reason = 'missing span/log projects: ' + ','.join(sorted(missing_spans | missing_logs))
             elif parentage_problem(spans, scenario):
                 reason = parentage_problem(spans, scenario)
+            elif scenario == 'cache-miss-hit' and cache_problem(spans, logs):
+                reason = cache_problem(spans, logs)
             elif any(log.get('span_id') not in span_ids for log in logs):
                 reason = 'stdout log span_id is absent from exported spans'
             elif any(not row.get('resource.k8s.pod.uid') or not row.get('resource.k8s.pod.name') or row.get('resource.k8s.namespace.name') != w.APP or row.get('resource.k8s.cluster.name') != w.CLUSTER or row.get('resource.service.namespace') != w.APP for row in [*spans, *logs] if row['project'] != PREFIX + 'infrastructure'):

@@ -137,3 +137,23 @@ WORKSHOP_VERIFICATION_TIMEOUT_SECONDS=300 make verify-infra
 ```
 
 The selected window is recorded in private evidence. Preflight before presenting and keep already visible current-deployment evidence available; do not wait for telemetry visibility inside the timed demo. This visibility setting does not change application deadlines, collector retry limits, or source-map processing timeouts.
+
+
+## Cache instrumentation checkpoint
+
+Run **Cache miss → hit** and filter its trace to the catalog project. Expect two
+`cache.get` spans (`cache.hit=false`, then `true`) and one `cache.put` span.
+The first lookup performs the product SELECT and writes Redis with `cache.ttl=300`;
+the second lookup skips both the product SELECT and cache write. Fulfillment SQL
+still runs afterward. Compare `catalog.lookup` durations to see the avoided work.
+
+These are existing Redis OTel CLIENT spans enriched with `sentry.op`,
+`cache.operation`, a normalized `cache.key`, and UTF-8 byte `cache.item_size` on
+hits/writes. The run UUID stays in `workshop.run_id`, outside the normalized key.
+Outcome logs originate in catalog and carry the cache read's trace/span IDs; the
+web service logs receipt of the catalog response. Bypass requests emit no cache
+operations and are not counted as misses. Redis failures are errors, not misses.
+Redis Streams and notification bookkeeping are not product cache operations.
+
+References: [Sentry cache instrumentation](https://docs.sentry.io/platforms/python/tracing/instrumentation/custom-instrumentation/caches-module/)
+and [Sentry cache attributes](https://getsentry.github.io/sentry-conventions/attributes/cache/).

@@ -83,7 +83,7 @@ async function product(run: Run, cachePolicy = "default"): Promise<Product> {
           );
         span.setAttribute("workshop.cache_hit", result.cached);
         log(
-          result.cached ? "Catalog cache hit" : "Catalog cache miss",
+          "Catalog response received",
           "INFO",
           {
             "workshop.run_id": run.runId,

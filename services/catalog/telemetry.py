@@ -74,10 +74,42 @@ def redis_request_hook(span, instance, args, kwargs):
         return
     # Run IDs belong in workshop.run_id; keep query grouping deterministic.
     description = command + " workshop:catalog:<scope>:demo-widget"
-    span.update_name(command + " workshop:catalog")
+    span.update_name("workshop:catalog:<scope>:demo-widget")
     span.set_attributes({"db.system": "redis", "db.system.name": "redis",
                          "db.operation.name": command, "db.statement": description,
-                         "db.query.text": description})
+                         "db.query.text": description,
+                         "sentry.op": "cache.get" if command == "GET" else "cache.put",
+                         "cache.operation": "get" if command == "GET" else "put",
+                         "cache.key": ["workshop:catalog:<scope>:demo-widget"]})
+    for target, modern, legacy in [("network.peer.address", "server.address", "net.peer.name"),
+                                   ("network.peer.port", "server.port", "net.peer.port")]:
+        value = span.attributes.get(modern, span.attributes.get(legacy))
+        if value is not None:
+            span.set_attribute(target, value)
+    if command == "SET":
+        value = args[2]
+        span.set_attribute("cache.item_size", len(value.encode("utf-8") if isinstance(value, str) else value))
+        # redis-py serializes set(..., ex=seconds) into positional EX arguments.
+        for index in range(3, len(args) - 1):
+            if str(args[index]).upper() == "EX":
+                span.set_attribute("cache.ttl", int(args[index + 1]))
+                break
+
+
+def redis_response_hook(span, instance, response):
+    """Record the outcome on the same OTel cache span that performed the IO."""
+    if not span or not span.is_recording():
+        return
+    operation = span.attributes.get("cache.operation")
+    if operation == "get":
+        hit = response is not None
+        fields = {"cache.hit": hit}
+        if hit:
+            fields["cache.item_size"] = len(response.encode("utf-8") if isinstance(response, str) else response)
+        span.set_attributes(fields)
+        emit("Catalog cache hit" if hit else "Catalog cache miss", **fields)
+    elif operation == "put":
+        span.set_attribute("cache.write", bool(response))
 
 
 def configure():
@@ -104,7 +136,7 @@ def configure():
         integrations=[OTLPIntegration(setup_otlp_traces_exporter=False, setup_propagator=False)],
     )
     PsycopgInstrumentor().instrument()
-    RedisInstrumentor().instrument(request_hook=redis_request_hook)
+    RedisInstrumentor().instrument(request_hook=redis_request_hook, response_hook=redis_response_hook)
     return provider
 
 
