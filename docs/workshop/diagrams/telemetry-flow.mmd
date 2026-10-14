@@ -1,0 +1,19 @@
+flowchart LR
+    browser["Browser (Sentry SDK)"]
+    subgraph cluster["Kubernetes cluster"]
+        apps["Backend apps (Next.js/Python/Go/Node worker)"]
+        stores["PostgreSQL and Redis"]
+        files["Node log files"]
+        agent["Collector agent (parse logs; enrich source)"]
+        gateway["Collector gateway (redact/sample/route)"]
+    end
+    sentry["Sentry"]
+    %% Agent preserves trace/span fields when supplied.
+    apps -->|"Traces: OTLP/HTTP 4318"| agent
+    apps -->|"JSON stdout"| files
+    stores -->|"Native stdout/stderr"| files
+    files -->|"Logs: filelog read and parse"| agent
+    agent -->|"Traces and logs: OTLP/gRPC 4317"| gateway
+    gateway -->|"OTLP traces and logs"| sentry
+    apps -->|"Sentry SDK errors"| sentry
+    browser -->|"Sentry SDK spans and errors"| sentry

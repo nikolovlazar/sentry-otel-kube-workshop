@@ -2,51 +2,51 @@
 
 ## Decisions
 
-full-journey, cache-miss-hit, slow-postgres, python-error, go-error, async-worker (recover/exhaust), next-error, browser-error.
+Five primary cards tell the timed demo's story: Complete journey, Cache miss → hit, Slow database, Database contention, and Background job. The four synthetic Python, Go, Next.js, and browser exceptions remain available in collapsed More examples. Background job retains success, recover, and exhaust controls; exhaust remains its default.
 
-## Steps
+## Ordered steps and prerequisites
 
-Run each card; inspect trace, issue and logs; confirm SQL rollback, cache transitions and queue retries. Slow database uses SELECT pg_sleep(1.2), not application sleep.
+1. Start `make up` with current Sentry configuration and processed JavaScript source maps.
+2. Run the five primary cards, using both recover and exhaust background modes.
+3. Expand More examples and run all four preserved origin-error cards.
+4. Run `make verify` for API/database/queue invariants, `make verify-sentry` for application evidence, and `make verify-infra` for native infrastructure evidence.
+5. Inspect current run/trace/event IDs, resource metadata, and native log context; do not reuse evidence from an earlier image.
 
-## Acceptance
+Expected results are durable terminal states, deterministic cache/latency behavior, one origin exception capture, and correct database/queue effects. The UI polls application state independently of telemetry indexing.
 
-Nine permutations pass; origin exceptions captured once; exactly three async attempts in an uninterrupted run; one dead letter on exhaustion; cache remains deterministic with prior activity.
-
-## Completion checklist
-
-- [x] Implementation complete
-- [x] Automated checks complete
-- [x] Live verification recorded where applicable
-- [x] Documentation matches observed behavior
-
-## Exact behavior
-
-- full-journey: fixed product/quantity, completion through worker.
-- cache-miss-hit: same run-specific key, first DB read/population then hit, never prewarmed by another run.
-- slow-postgres: cache bypass and actual1.2s database query.
-- python-error: uncached DB read then DemoCatalogError; no order/outbox.
-- go-error: inventory update inside transaction then failure before commit; unchanged stock.
-- async-worker recover: fail1,fail2,succeed3; no terminal issue/DLQ.
-- async-worker exhaust: fail3 and one final SDK issue/DLQ.
-- next-error: BeginRun then fail before catalog.
-- browser-error: active browser action span, explicit exception capture, event ID persisted via BFF.
-
-UI displays run/trace IDs,status,attempts,origin and event ID with Sentry navigation. One active run per browser; concurrent browsers remain independent. Status polling does not wait for telemetry ingestion.
-
-## Nine acceptance permutations
+## Exact behavior and acceptance
 
 | Scenario | Fault/behavior | Terminal state | Evidence |
 | --- | --- | --- | --- |
-| Complete journey | All services, one queue delivery | completed, attempt1 | One order and stock decrement, four workloads in one trace |
-| Cache miss/hit | Fresh run-specific key, two lookups | completed | One miss plus one hit; one SQL product read |
-| Slow database | Cache bypass, `pg_sleep(1.2)` | completed | DB span at least1.2s |
-| Python error | Raise after product read | failed | Catalog event linked to `catalog.lookup`; no order |
-| Go error | Fail after inventory UPDATE before commit | failed | Fulfillment event and rollback; stock unchanged |
-| Async recover | Fail attempts1/2, succeed3 | completed | Three sibling consumer spans, no final issue/DLQ |
-| Async exhaust | Fail all three attempts | dead_lettered | One stable Node event, one DLQ record, original consumer span |
-| Next.js error | Fail after BeginRun, before catalog | failed | Web server event, no catalog/order |
-| Browser exception | Catch deliberate exception inside action span | failed | Browser event; same trace as BeginRun |
+| `full-journey` | Fixed product and quantity, one queued delivery | completed, attempt 1 | One order/stock decrement; all application services in one trace |
+| `cache-miss-hit` | Fresh run-specific cache key, two lookups | completed | Redis miss/populate/hit, one SQL product read |
+| `slow-postgres` | Cache bypass and actual `pg_sleep(1.2)` | completed | SQL span at least 1.2 s; retained native PostgreSQL duration log |
+| `postgres-lock-timeout` | Exclusive product-table lock, second-connection read with 750 ms lock timeout | failed | `POSTGRES_LOCK_TIMEOUT`, catalog issue/failed SQL span, native lock/error logs, no order or stock change |
+| `async-worker` recover | Fail attempts 1/2, succeed on 3 | completed | Three sibling consumer spans; no terminal issue/DLQ |
+| `async-worker` exhaust | Fail all three attempts | dead_lettered | One stable Node event, one DLQ record, original consumer context |
+| `python-error` | Uncached product read then `DemoCatalogError` | failed | Catalog event linked to `catalog.lookup`; no order |
+| `go-error` | Inventory UPDATE then failure before commit | failed | Fulfillment event, transaction rollback, unchanged stock |
+| `next-error` | BeginRun then fail before catalog | failed | Web server event; no catalog/order |
+| `browser-error` | Caught deliberate exception in active browser action span | failed | Browser event; same trace as backend BeginRun |
 
-Run buttons are serialized in the UI. Every result exposes run/trace/event identifiers and Sentry links. Upstream services log/mark the failure without another issue capture. Slow/cache scenarios always work independently of previous activity.
+These are ten acceptance permutations: nine API cases plus the real browser case. Async first-attempt success is covered by Complete journey and remains available in the selector.
 
-Prerequisite: `make up` plus real Sentry configuration. Run `make verify` for eight HTTP permutations and browser checks for the ninth. After resets, start new marked runs; retained Sentry history does not count as evidence for a newly deployed image.
+Contention bypasses Redis. Release the exclusive lock in `finally`, with a two-second idle transaction timeout protecting a crashed locker. A healthy journey immediately afterward proves recovery without storage restart. Native PostgreSQL records use the enclosing business-span context supplied through `application_name`; service/pod identity remains PostgreSQL.
+
+## Presentation and exercises
+
+The 35-minute demo follows the five primary cards. Show slow query → timeout → error/trace/native logs as a single investigation. Keep additional synthetic failures, pod replacement, and Redis busy faults outside the timed path.
+
+The finite `make demo-infra-sampling` exercise compares 2,000 routine PostgreSQL messages at 100% and 5% retention, then restores the prior gateway rate. `make demo-redis-busy` emits a genuine Redis slow-script warning using a fixed read-only script lasting approximately 400 ms with a 100 ms threshold. The warning survives sampling; no Stream data is modified. Both generators terminate.
+
+## Completion checklist
+
+- [x] Original cache, latency, origin-error, and queue scenarios implemented
+- [x] Five-card view and collapsed original examples implemented
+- [x] New database contention and infrastructure exercises verified against deployed images
+- [x] Fresh native Sentry evidence, nine backend permutations, and real browser error recorded
+- [x] All nine UI cards plus recover mode verified with ten distinct run/trace IDs
+- [x] Fresh idle health-check observation and normal positive control passed
+- [ ] Human 35-minute narration rehearsal completed
+
+Live revision results are recorded in [verification](../verification.md). Checked historical baseline acceptance does not substitute for new image/configuration evidence.

@@ -65,3 +65,25 @@ If the upload CLI reports a certificate-verification failure in a custom slim bu
 ## Source-map recovery reports a runtime mismatch
 
 `make source-map-upload` checks every running web/worker pod against the selected local Docker content ID and the shared release/version configuration. It extracts assets from the verified immutable image IDs and rechecks before upload. If a rebuild has not been deployed, wait for both application rollouts after `make build` and `make deploy`, then rerun `make source-map-upload`. Do not upload maps from a different local image to repair a running release.
+
+## Native infrastructure logs seem missing
+
+Routine PostgreSQL/Redis logs default to 5% retention. Inspect gateway `OTEL_INFRA_LOG_SAMPLE_PERCENT` and the keep policy before assuming ingestion failed. Application logs, infrastructure warnings/errors, and recognized PostgreSQL slow-query/lock-wait records must remain at 100%. Envoy and other components retain existing behavior. Run `make verify-collector` for native parsing and sampler fixtures, then `make verify-infra` for live evidence.
+
+PostgreSQL duration logs require a statement lasting at least 500 ms; Slow database provides `pg_sleep(1.2)`. Lock-wait logging uses a 250 ms threshold; Database contention times out at 750 ms. Inspect the authentic prefix and `application_name` containing validated `w:<trace-id>:<span-id>`. These logs connect to the enclosing `catalog.product_query` business span and stay attributed to PostgreSQL's real pod. Bind values are not logged.
+
+Redis native records have no OTLP trace/span context. Sentry can assign a standalone ingestion trace ID while `span_id` stays absent; do not use that ID as an application-trace link. Their correct investigation context is `resource.service.name:redis`, Redis pod, and incident time. Native PostgreSQL filters likewise use `resource.service.name:postgres`; application records also carry the `service.name` attribute. `make demo-redis-busy` produces a genuine bounded warning; it should not mutate Stream data or restart Redis. Empty OTLP context on a native Redis warning is expected.
+
+## Database contention leaves a workflow failed
+
+`POSTGRES_LOCK_TIMEOUT` is deliberate in that scenario. The product read fails after its session-local 750 ms lock timeout, and catalog releases the locker in `finally`. A two-second idle transaction timeout bounds a crashed locker. No order or inventory decrement occurs. Run Complete journey immediately afterward to confirm recovery. Persistent healthy-request failures require inspection of the actual PostgreSQL lock/session state, rather than another fault invocation.
+
+## Sampling exercise interrupted
+
+`make demo-infra-sampling` temporarily changes the gateway rate and restores the prior rate in `finally`; it does not edit root `.env`. Inspect its evidence and current gateway rollout. If the process was forcibly killed before cleanup, run `make deploy` to restore the rate configured in `.env`, then `make verify-infra`. Generators are finite and should leave no background process.
+
+## Verification times out while Sentry indexes data
+
+Live verification uses `WORKSHOP_VERIFICATION_TIMEOUT_SECONDS=120` by default and accepts integers 30–600. In the infrastructure revision rehearsal, strict 120-second native-log visibility failed; all required predicates became visible around three minutes later. Keep that failed deadline as evidence. For an explicit longer preflight, use `WORKSHOP_VERIFICATION_TIMEOUT_SECONDS=300 make verify-sentry` or `WORKSHOP_VERIFICATION_TIMEOUT_SECONDS=300 make verify-infra`; the chosen window is stored in the result.
+
+Check receiver/export failures first and distinguish absent data from delayed visibility. The rehearsal did not establish whether transport or Sentry indexing caused the delay. A later visible record does not retrospectively satisfy the shorter window. Keep already visible current-deployment evidence ready for the live presentation. This setting affects local visibility polling only, not collector HTTP retries, application timeouts, or source-map processing.

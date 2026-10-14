@@ -12,7 +12,7 @@ import workshop as w
 PREFIX = 'sentry-otel-workshop-'
 SCENARIOS = [
     ('full-journey', 'success'), ('cache-miss-hit', 'success'),
-    ('slow-postgres', 'success'), ('python-error', 'success'),
+    ('slow-postgres', 'success'), ('postgres-lock-timeout', 'success'), ('python-error', 'success'),
     ('go-error', 'success'), ('next-error', 'success'),
     ('async-worker', 'recover'), ('async-worker', 'exhaust'),
 ]
@@ -46,7 +46,7 @@ def api(path, params=None):
 
 def required_services(scenario):
     if scenario == 'next-error': return {'web', 'fulfillment'}
-    if scenario in ['python-error', 'go-error']: return {'web', 'catalog', 'fulfillment'}
+    if scenario in ['python-error', 'go-error', 'postgres-lock-timeout']: return {'web', 'catalog', 'fulfillment'}
     return set(SERVICES)
 
 
@@ -99,7 +99,7 @@ def main():
     w.forward()
     for suffix in [*SERVICES.values(), 'infrastructure']:
         api('projects/' + w.CFG['SENTRY_ORG_SLUG'] + '/' + PREFIX + suffix + '/')
-    evidence = {'timestamp': datetime.now(timezone.utc).isoformat(), 'sessionId': w.CFG['WORKSHOP_SESSION_ID'], 'exporterMode': w.CFG['SENTRY_EXPORTER_MODE'], 'runs': []}
+    evidence = {'timestamp': datetime.now(timezone.utc).isoformat(), 'sessionId': w.CFG['WORKSHOP_SESSION_ID'], 'exporterMode': w.CFG['SENTRY_EXPORTER_MODE'], 'verificationTimeoutSeconds': int(w.CFG['WORKSHOP_VERIFICATION_TIMEOUT_SECONDS']), 'runs': []}
     # Start the bounded matrix first so the normal ingestion delay is shared across cases.
     started = [(scenario, mode, local('/api/runs', {'scenario': scenario, 'workerMode': mode, 'sessionId': w.CFG['WORKSHOP_SESSION_ID']})) for scenario, mode in SCENARIOS]
     for scenario, mode, run in started:
@@ -111,12 +111,12 @@ def main():
         if run['status'] not in ['completed', 'failed', 'dead_lettered']: raise SystemExit('Workflow did not terminate: ' + run['runId'])
         trace = run['traceId']
         if not re.fullmatch('[a-f0-9]{32}', trace) or trace == '0' * 32: raise SystemExit('Workflow has no valid traceId: ' + run['runId'])
-        expected = 'dead_lettered' if mode == 'exhaust' else ('failed' if scenario.endswith('error') else 'completed')
+        expected = 'dead_lettered' if mode == 'exhaust' else ('failed' if scenario.endswith('error') or scenario == 'postgres-lock-timeout' else 'completed')
         if run['status'] != expected: raise SystemExit('Unexpected terminal state for ' + scenario + '/' + mode)
         required = required_services(scenario)
         required_projects = {PREFIX + SERVICES[service] for service in required} | {PREFIX + 'infrastructure'}
         required_log_projects = required_projects - {PREFIX + 'infrastructure'}
-        deadline = time.monotonic() + 120
+        deadline = time.monotonic() + int(w.CFG['WORKSHOP_VERIFICATION_TIMEOUT_SECONDS'])
         org = 'organizations/' + w.CFG['SENTRY_ORG_SLUG'] + '/events/'
         params = {'statsPeriod': '1h', 'query': 'trace:' + trace, 'per_page': 100}
         spans = []; logs = []; event = None; reason = ''
@@ -173,7 +173,7 @@ def main():
         evidence['runs'].append({**run, 'spanCount': len(spans), 'logCount': len(logs), 'duplicateLogQueryRows': duplicate_query_rows, 'spans': spans, 'logs': logs, 'errorTraceContext': event.get('contexts', {}).get('trace') if event else None, 'readableSourceFrames': frames})
         w.private_write(w.LOCAL / 'verification/sentry.json', json.dumps(evidence, indent=2))
         print(f'{scenario}/{mode}: {run["status"]}, trace {trace}, {len(spans)} spans/{len(logs)} logs' + (', readable error ' + run['errorEventId'] if event else ''), flush=True)
-    print('Eight live Sentry permutations passed; browser errors are verified separately in the UI. Evidence: .local/verification/sentry.json')
+    print('Nine live Sentry permutations passed; browser errors are verified separately in the UI. Evidence: .local/verification/sentry.json')
 
 
 if __name__ == '__main__': main()

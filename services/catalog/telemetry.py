@@ -54,6 +54,32 @@ def workflow_context(attributes):
         context.detach(token)
 
 
+def postgres_application_name():
+    """Carry only valid active business-span IDs in PostgreSQL's 63-byte field."""
+    span_context = trace.get_current_span().get_span_context()
+    if span_context.is_valid:
+        return f"w:{span_context.trace_id:032x}:{span_context.span_id:016x}"
+    return "workshop-catalog"
+
+
+def redis_request_hook(span, instance, args, kwargs):
+    """Describe synthetic cache commands without exporting cached payloads."""
+    if not span or not span.is_recording() or not args:
+        return
+    command = str(args[0]).upper()
+    if command not in {"GET", "SET"} or len(args) < 2:
+        return
+    key = str(args[1])
+    if not key.startswith("workshop:catalog:"):
+        return
+    # Run IDs belong in workshop.run_id; keep query grouping deterministic.
+    description = command + " workshop:catalog:<scope>:demo-widget"
+    span.update_name(command + " workshop:catalog")
+    span.set_attributes({"db.system": "redis", "db.system.name": "redis",
+                         "db.operation.name": command, "db.statement": description,
+                         "db.query.text": description})
+
+
 def configure():
     attrs = {
         "service.name": os.getenv("OTEL_SERVICE_NAME", "catalog"),
@@ -78,7 +104,7 @@ def configure():
         integrations=[OTLPIntegration(setup_otlp_traces_exporter=False, setup_propagator=False)],
     )
     PsycopgInstrumentor().instrument()
-    RedisInstrumentor().instrument()
+    RedisInstrumentor().instrument(request_hook=redis_request_hook)
     return provider
 
 

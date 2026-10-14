@@ -20,3 +20,17 @@ verify-sentry:
 	$(PYTHON) scripts/verify-sentry.py
 source-map-upload:
 	$(PYTHON) scripts/source-map-upload.py
+
+.PHONY: k9s
+k9s:
+	./scripts/k9s.sh
+
+.PHONY: demo-infra-sampling demo-redis-busy verify-infra verify-collector
+demo-infra-sampling:
+	$(PYTHON) scripts/infra_demo.py sampling
+demo-redis-busy:
+	$(PYTHON) scripts/infra_demo.py redis-busy
+verify-infra:
+	$(PYTHON) scripts/infra_demo.py verify
+verify-collector:
+	$(PYTHON) infra/collectors/tests/verify.py

@@ -6,7 +6,7 @@ Agent DaemonSet collects OTLP traces and container stdout. Gateway routes to fiv
 
 ## Steps
 
-Provision projects through plugin; fill local placeholders; parse container+JSON+trace fields; associate original pod UID; map services to projects; configure memory limits, queues and batch.
+Provision projects through plugin; fill local placeholders; parse container+JSON+native infrastructure formats+trace fields; associate original pod UID; map services to projects; configure memory limits, queues and batch.
 
 ## Acceptance
 
@@ -33,7 +33,7 @@ The Sentry Exporter uses `auto_create_projects:false`, routes by `service.name` 
 
 Agent: OTLP receiver + filelog container parser; JSON body/severity/native trace fields; original pod association and labels; resource attributes; bounded memory and batching; OTLP gateway export. Include only workshop pod logs and exclude collector logs. Persist checkpoints.
 
-Gateway: OTLP receiver, bounded memory, removal of auth/cookie/connection-string fields, batching and exclusive Sentry/static export route. Persist a bounded sending queue of unsent batches; retry behavior depends on the chosen exporter. Synthetic parameterized SQL text can remain for explaining latency. Debug export is a temporary diagnostic configuration, not a parallel production path.
+Gateway: OTLP receiver, bounded memory, removal of auth/cookie/connection-string fields, infrastructure-only probabilistic log sampling, batching and exclusive Sentry/static export route. Persist a bounded sending queue of unsent batches; retry behavior depends on the chosen exporter. Synthetic parameterized SQL text can remain for explaining latency. Debug export is a temporary diagnostic configuration, not a parallel production path.
 
 Missing resource service names and unknown mappings fail verification. Trace context on logs must occupy native fields. Current constraints: OTLP ingestion beta, Sentry Exporter alpha, no OTLP metrics.
 
@@ -51,7 +51,7 @@ All suffixes follow `sentry-otel-workshop-`. Provision the projects on the reque
 
 1. Select `SENTRY_EXPORTER_MODE=sentry` or `otlphttp`. Run `make configure` to create ignored Secrets/configuration and validate the selected collector pipelines.
 2. Run `make build` then `make deploy`, or use `make up` for the full sequence. The JavaScript builds upload maps and wait for processing before deployment. The agent's OTLP ports are4317/4318. Applications use HTTP4318; the agent forwards gRPC4317 to the gateway.
-3. Run `make verify-sentry`. Require the intended project coverage, correlated logs, Kubernetes context and SDK errors within120s.
+3. Run `make verify-sentry`. Require the intended project coverage, correlated logs, Kubernetes context and SDK errors within the configured visibility window (120 seconds by default).
 4. To switch, change only the exporter mode and redeploy; the gateway has a single active route, so there is no parallel delivery. Restore the original mode and repeat a marked workflow.
 
 The static gateway uses routing connectors and one authenticated `otlphttp` exporter per project. Endpoints are derived from DSNs as `/api/<project-id>/integration/otlp`; project public ingest keys provide authentication. No management token is needed in this mode.
@@ -83,3 +83,13 @@ SENTRY_AUTH_TOKEN="$(sentry auth token)" make verify-sentry
 Command substitution supplies the token without printing it. Run with shell tracing disabled. This does not redeploy or change the gateway Secret. Both JavaScript `npm run build` wrappers read ignored root `.env`, honor explicit environment overrides, compile/inject debug IDs, upload matching maps and wait up to 120 seconds for processing. The full `make doctor`/`make build`/`make up` path requires the upload token and fails when upload or processing fails. An isolated npm build with no token compiles with an explicit skipped-upload message. Docker supplies the token only as the `sentry_source_map_token` BuildKit secret; routing/release parameters and a fresh upload nonce are nonsecret build arguments. The token is never an image build argument, image environment variable or Kubernetes Secret. `make source-map-upload` remains a guarded recovery utility for the exact deployed images.
 
 The build wrapper selects credentials in this order: the mounted BuildKit secret; an explicit `SENTRY_SOURCE_MAP_AUTH_TOKEN` (or legacy `SOURCE_MAP_AUTH_TOKEN`); an explicit caller `SENTRY_AUTH_TOKEN`; then the upload-specific token in root `.env`. The collector's `SENTRY_AUTH_TOKEN` stored in root `.env` is never an upload fallback. The compiler and debug-ID injection children receive none of these auth variables; only the upload child receives the selected credential as `SENTRY_AUTH_TOKEN`. For an isolated host build, `SENTRY_UPLOAD_SOURCE_MAPS=false` explicitly skips uploading; required workshop builds reject that setting.
+
+## Native-log processing and keep policy
+
+PostgreSQL and Redis native records use the existing filelog path, checkpoint storage, original-pod association, and infrastructure-project route. Parse known formats into timestamp/severity/body and component-specific fields. PostgreSQL's prefix supplies PID, SQLSTATE, and `application_name`; only `w:<32-hex-trace-id>:<16-hex-span-id>` with valid nonzero context becomes OTLP LogRecord context. That context identifies `catalog.product_query`, the business span surrounding the SQL statements; SDK error capture occurs in the parent `catalog.lookup` span. Redis native logs have empty OTLP trace/span context. Sentry can assign a standalone trace ID, so verify absent `span_id` and do not infer application correlation from that ingestion ID. Preserve real service names and metadata; Sentry native-log queries use `resource.service.name`, while application records also have a `service.name` attribute.
+
+Assign a unique record ID before agent export. At the gateway, use Contrib 0.162.0's probabilistic log sampler with that identifier. Default routine PostgreSQL/Redis retention is 5%; allowed `OTEL_INFRA_LOG_SAMPLE_PERCENT` values are 5, 10, and 100. Explicit keep priority preserves all application logs, infrastructure warnings/errors, recognized PostgreSQL slow-query/lock-wait records, and nonsampled components. Put this policy in both mutually exclusive export configurations; never add a parallel log exporter.
+
+`make verify-collector` checks real pinned collector configuration and fixtures, including invalid context, authentic resource attribution, application/incident retention, and routine sampling. `make demo-infra-sampling` temporarily compares 100% and 5%, restores the configured rate, and records `.local/verification/infra-sampling.json`. `make verify-infra` records actual Sentry context and severity evidence in `.local/verification/infra-live.json`.
+
+Log sampling is separate from trace tail sampling. Application traces stay at 100% with existing health exclusions. This revision does not add a tail sampler or alter exporter retry limits.

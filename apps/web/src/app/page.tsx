@@ -43,13 +43,23 @@ const cards: {
     number: "03",
     title: "Slow database",
     description:
-      "An intentional database delay makes the slow part of the request easy to find.",
+      "Find the slow query, then connect it with PostgreSQL’s own duration log.",
     path: "Catalog → PostgreSQL · +1.2 seconds",
     lesson: "Find the bottleneck",
   },
   {
-    id: "python-error",
+    id: "postgres-lock-timeout",
     number: "04",
+    title: "Database contention",
+    description:
+      "A bounded database lock blocks a product read. Connect the timeout, trace, and native logs.",
+    path: "Catalog → PostgreSQL · 750 ms lock timeout",
+    lesson: "Infrastructure explains errors",
+    tone: "error",
+  },
+  {
+    id: "python-error",
+    number: "06",
     title: "Python exception",
     description:
       "The catalog fails. Follow its error back to the request and its structured logs.",
@@ -59,7 +69,7 @@ const cards: {
   },
   {
     id: "go-error",
-    number: "05",
+    number: "07",
     title: "Go exception",
     description:
       "Fulfillment fails over gRPC and returns the original Sentry event ID to the web app.",
@@ -69,7 +79,7 @@ const cards: {
   },
   {
     id: "async-worker",
-    number: "06",
+    number: "05",
     title: "Background job",
     description:
       "Watch durable queue delivery, retry attempts, and a final success or dead letter.",
@@ -78,7 +88,7 @@ const cards: {
   },
   {
     id: "next-error",
-    number: "07",
+    number: "08",
     title: "Next.js exception",
     description:
       "Trigger a server exception before checkout. The error keeps the active OTel context.",
@@ -88,7 +98,7 @@ const cards: {
   },
   {
     id: "browser-error",
-    number: "08",
+    number: "09",
     title: "Browser exception",
     description:
       "A client error shares its trace with the server request that started the workflow.",
@@ -97,6 +107,16 @@ const cards: {
     tone: "error",
   },
 ];
+const primaryCards = cards.filter((card) =>
+  [
+    "full-journey",
+    "cache-miss-hit",
+    "slow-postgres",
+    "postgres-lock-timeout",
+    "async-worker",
+  ].includes(card.id),
+);
+const additionalCards = cards.filter((card) => !primaryCards.includes(card));
 const friendlyStatus: Record<string, string> = {
   running: "Running",
   queued: "Queued",
@@ -261,6 +281,45 @@ export default function ControlCentre() {
       setNotice("Select the identifier to copy it.");
     }
   }
+  function renderCard(card: (typeof cards)[number]) {
+    return (
+      <article className={`card ${card.tone ?? ""}`} key={card.id}>
+        <div className="card-top">
+          <span className="card-number">{card.number}</span>
+          <span className="lesson">{card.lesson}</span>
+        </div>
+        <h3>{card.title}</h3>
+        <p>{card.description}</p>
+        <div className="card-path">{card.path}</div>
+        {card.id === "async-worker" && (
+          <label className="worker-mode">
+            Worker outcome
+            <select
+              value={workerMode}
+              onChange={(event) =>
+                setWorkerMode(event.target.value as WorkerMode)
+              }
+              disabled={Boolean(busy)}
+            >
+              <option value="success">Succeed first attempt</option>
+              <option value="recover">Recover on attempt 3</option>
+              <option value="exhaust">Exhaust → dead letter</option>
+            </select>
+          </label>
+        )}
+        <button
+          onClick={() => launch(card.id)}
+          disabled={Boolean(busy) || !config}
+          className="run-button"
+        >
+          <span>
+            {busy === card.id ? "Running workflow…" : "Run workflow"}
+          </span>
+          <span aria-hidden="true">{busy === card.id ? "◌" : "↗"}</span>
+        </button>
+      </article>
+    );
+  }
   const orgBase = config?.orgSlug
     ? `${config.baseUrl.replace(/\/$/, "")}/organizations/${encodeURIComponent(config.orgSlug)}`
     : "";
@@ -361,47 +420,17 @@ export default function ControlCentre() {
             <div className="section-kicker">TRY A WORKFLOW</div>
             <h2>Make the system tell its story.</h2>
           </div>
-          <span className="section-note">Eight scenarios. Real requests.</span>
+          <span className="section-note">Five workflows. Real requests.</span>
         </div>
         <div className="cards">
-          {cards.map((card) => (
-            <article className={`card ${card.tone ?? ""}`} key={card.id}>
-              <div className="card-top">
-                <span className="card-number">{card.number}</span>
-                <span className="lesson">{card.lesson}</span>
-              </div>
-              <h3>{card.title}</h3>
-              <p>{card.description}</p>
-              <div className="card-path">{card.path}</div>
-              {card.id === "async-worker" && (
-                <label className="worker-mode">
-                  Worker outcome
-                  <select
-                    value={workerMode}
-                    onChange={(event) =>
-                      setWorkerMode(event.target.value as WorkerMode)
-                    }
-                    disabled={Boolean(busy)}
-                  >
-                    <option value="success">Succeed first attempt</option>
-                    <option value="recover">Recover on attempt 3</option>
-                    <option value="exhaust">Exhaust → dead letter</option>
-                  </select>
-                </label>
-              )}
-              <button
-                onClick={() => launch(card.id)}
-                disabled={Boolean(busy) || !config}
-                className="run-button"
-              >
-                <span>
-                  {busy === card.id ? "Running workflow…" : "Run workflow"}
-                </span>
-                <span aria-hidden="true">{busy === card.id ? "◌" : "↗"}</span>
-              </button>
-            </article>
-          ))}
+          {primaryCards.map(renderCard)}
         </div>
+        <details className="more-examples">
+          <summary>
+            More examples <span>Python, Go, Next.js, and browser exceptions</span>
+          </summary>
+          <div className="cards">{additionalCards.map(renderCard)}</div>
+        </details>
       </section>
       <section className="results" aria-live="polite">
         <div className="section-heading">

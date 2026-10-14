@@ -1,6 +1,6 @@
 # Verified versions and provenance
 
-Verified on 2026-10-09. Runtime manifests pin published image digests; local application images use `:local` and are rebuilt and loaded together. Language dependency versions are locked in each application's package lock, `uv.lock`, or `go.sum`.
+Initial baseline verified on 2026-10-09; the native infrastructure revision reused this pinned compatibility set and passed source/collector plus both-route live checks. Runtime manifests pin published image digests; local application images use `:local` and are rebuilt and loaded together. Language dependency versions are locked in each application's package lock, `uv.lock`, or `go.sum`.
 
 | Component | Pin | Primary source |
 | --- | --- | --- |
@@ -68,3 +68,11 @@ The Envoy shutdown helper adds a32MiB memory request. The primary-container tota
 ## Final local verification snapshot
 
 Initial application verification release: `6f4c13254eb81e0f1e40ccfe7776639963a491e9`. Subsequent health-check sampling verification records its new release in ignored `.local/verification/health-checks.json`. The presenter's ignored local configuration freezes this verified release while later commits finish documentation, verification and reset orchestration. Fresh checkouts use their current Git SHA by default. Remove/update both `SERVICE_VERSION` and `SENTRY_RELEASE` overrides before changing application source, then build/deploy and verify again. See the [verification record](verification.md) for final rehearsal results and the tested resource allocation.
+
+## Infrastructure-log revision compatibility
+
+The revision retains the pinned dependency/image set. Contrib 0.162.0 provides native filelog parsing and the probabilistic log sampler used for routine PostgreSQL/Redis logs. `OTEL_INFRA_LOG_SAMPLE_PERCENT` accepts 5, 10, and 100; both exporter configurations use the same policy. PostgreSQL 17 keeps stderr logs and supports the configured duration, lock-wait, SQLSTATE/application-name prefix, lock timeout, and idle transaction timeout. Redis 7.4 uses a 100 ms busy-reply threshold for the finite read-only busy exercise. Repeat real pinned collector configuration/fixture checks and native Sentry gates after these configuration changes.
+
+Live verification visibility is separately configurable through `WORKSHOP_VERIFICATION_TIMEOUT_SECONDS` (default 120, valid integers 30–600). The infrastructure revision's recorded 300-second preflight preserves the strict default-window failure; it does not change application, exporter retry, or build-time source-map processing limits. Native Redis collector fixtures confirm empty OTLP trace/span context even when Sentry displays a standalone ingestion trace ID without `span_id`.
+
+The native infrastructure revision kept one candidate image set throughout the nine-backend Sentry matrix, browser-error source check, both exporter infrastructure gates, and finite sampling comparison. Exact candidate version/image identities remain in ignored evidence. Main Sentry Exporter mode and routine sample rate 5% were restored by a successful deployment. Strict 120-second visibility failed; successful live checks explicitly used 300 seconds. The source of that visibility delay was not determined. Human presentation rehearsal remains separate from automated acceptance.

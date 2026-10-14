@@ -32,7 +32,7 @@ type Service struct {
 }
 
 var scenarios = map[string]bool{
-	"full-journey": true, "cache-miss-hit": true, "slow-postgres": true, "python-error": true,
+	"full-journey": true, "cache-miss-hit": true, "slow-postgres": true, "postgres-lock-timeout": true, "python-error": true,
 	"go-error": true, "async-worker": true, "next-error": true, "browser-error": true,
 }
 var safeName = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,80}$`)

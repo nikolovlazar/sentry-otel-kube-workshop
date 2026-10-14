@@ -51,6 +51,7 @@ Main exporter mode requires Organization Read and Project Read credentials. An a
 | --- | --- | --- |
 | Complete journey | Order completes through worker | Four services in one trace |
 | Cache miss → hit | One DB-backed lookup, then a cache hit | Redis and PostgreSQL client spans |
+| Database contention | A real 750ms PostgreSQL lock timeout | One Python issue, failed SQL span and native database logs |
 | Slow database | Successful lookup with a 1.2-second DB delay | Database span explains latency |
 | Python exception | Failed run before order creation | Python issue, exact span, surrounding logs |
 | Go exception | Failed reservation rolls back | Go issue, transaction span, unchanged inventory |
@@ -61,12 +62,23 @@ Main exporter mode requires Organization Read and Project Read credentials. An a
 
 Each injected failure has one originating logical SDK event. Worker transport replays use the same stable event ID. The worker is simulated: no external notification is sent. All data is synthetic.
 
+## Revised workshop flow
+
+Ben opens with 15 minutes on OTel, Sentry and the integration, followed by a 35-minute demo and 10 minutes of questions. The control centre starts with five scenarios: healthy journey, cache comparison, slow PostgreSQL, database contention and background jobs. The original synthetic errors are available under **More examples**. See the [attendee guide](docs/workshop/attendee-guide.md) for exercises.
+
+Only routine **PostgreSQL and Redis infrastructure logs** are sampled, at 5% by default (`OTEL_INFRA_LOG_SAMPLE_PERCENT=5`; accepts 5, 10 or 100). Application logs and traces retain their existing 100% behavior and health-check exclusions. Native warnings/errors, slow-query and lock-wait evidence are retained. Both exporter routes apply the same policy. PostgreSQL logs can link to the real catalog business span through `application_name`; Redis native logs are investigated by component, pod and time. This is probabilistic log sampling; trace tail sampling is outside this revision.
+
 ## Operate and verify
 
 ```sh
+make k9s              # Open the workshop Kubernetes terminal UI
 make test             # Service behavior and contract checks
 make verify           # Application + cluster acceptance checks
 make verify-sentry    # Real telemetry ingestion checks
+make verify-collector # Collector parser/sampling fixtures, both exporters
+make verify-infra     # Native infrastructure incidents and retention in Sentry
+make demo-infra-sampling # Finite 100% vs 5% infrastructure-log comparison
+make demo-redis-busy  # Fixed read-only Redis script and authentic warning
 make verify-recovery  # Isolated worker crash + SDK outage check
 make reset-demo       # Reset only workshop data; preserve Sentry history
 make down             # Stop this project's port-forward
@@ -74,7 +86,9 @@ make forward          # Resume forwarding for the existing cluster
 make cluster-delete   # Delete only this project's named kind cluster
 ```
 
-`make source-map-upload` is an optional recovery command for maps from the exact running images; normal builds already upload them. The verification scripts fail explicitly when evidence is missing. Current execution evidence is stored in ignored `.local/verification`; [validation](docs/plan/06-validation.md) defines the required proof. Re-deploying is idempotent. Reset temporarily stops the four application workloads, reseeds fixtures and creates a new session. Reload the control-centre page afterward so it reads that session. Reset is separate from cluster deletion.
+Install K9s with `brew install derailed/k9s/k9s`, then run `make k9s` or `./scripts/k9s.sh`. The launcher selects the dedicated workshop kubeconfig, context, and namespace. To launch it from any directory, install a shortcut with `mkdir -p ~/.local/bin && ln -s "$PWD/scripts/k9s.sh" ~/.local/bin/workshop-k9s`, then run `workshop-k9s`.
+
+`make source-map-upload` is an optional recovery command for maps from the exact running images; normal builds already upload them. The verification scripts fail explicitly when evidence is missing. Their strict visibility window defaults to 120 seconds; an explicit `WORKSHOP_VERIFICATION_TIMEOUT_SECONDS=300 make verify-infra` (or `make verify-sentry`) allows a longer rehearsal window when remote telemetry visibility lags. This changes only verification waiting, not application deadlines or sampling. Current execution evidence is stored in ignored `.local/verification`; [validation](docs/plan/06-validation.md) defines the required proof. Re-deploying is idempotent. Reset temporarily stops the four application workloads, reseeds fixtures and creates a new session. Reload the control-centre page afterward so it reads that session. Reset is separate from cluster deletion.
 
 ## Developer tests
 
@@ -95,7 +109,6 @@ The recovery check uses a disposable Redis container with the same pinned image 
 ## Learn and present
 
 - [Implementation plan](docs/plan/00-overview.md)
-- [Presenter guide](docs/workshop/presenter-guide.md)
 - [Attendee exercises](docs/workshop/attendee-guide.md)
 - [Troubleshooting](docs/troubleshooting.md)
 - [Pinned versions](docs/versions.md)

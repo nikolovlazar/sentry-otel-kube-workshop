@@ -6,7 +6,7 @@ Next web orchestrates Python HTTP and Go gRPC. Catalog and fulfillment own separ
 
 ## Steps
 
-Implement BeginRun/SubmitOrder/GetRun/ListRuns/RecordFailure/RecordNotificationResult; migrations and fixtures; outbox and idempotent queue; eight UI cards.
+Implement BeginRun/SubmitOrder/GetRun/ListRuns/RecordFailure/RecordNotificationResult; migrations and fixtures; outbox and idempotent queue; five primary UI cards and four additional examples.
 
 ## Acceptance
 
@@ -41,7 +41,7 @@ Worker ACK follows durable completion. The normal retry budget is three attempts
 
 ## Exact run and request contract
 
-`POST /api/runs` accepts an allowlisted `scenario` and optional `workerMode`, plus the active session ID. The scenario strings are `full-journey`, `cache-miss-hit`, `slow-postgres`, `python-error`, `go-error`, `async-worker`, `next-error`, `browser-error`; worker modes are `success`, `recover`, `exhaust`. The async UI defaults to `exhaust`. Unknown values return400.
+`POST /api/runs` accepts an allowlisted `scenario` and optional `workerMode`, plus the active session ID. The scenario strings are `full-journey`, `cache-miss-hit`, `slow-postgres`, `postgres-lock-timeout`, `python-error`, `go-error`, `async-worker`, `next-error`, `browser-error`; worker modes are `success`, `recover`, `exhaust`. The async UI defaults to `exhaust`. Unknown values return400.
 
 Accepted background work returns202. Origin Next.js failure returns500; propagated downstream failure returns502. These bodies retain the run ID and diagnostic identifiers. Poll `GET /api/runs/:id` for durable state; listing returns the latest20 runs in the active session. Browser exceptions record only a valid event ID through `POST /api/runs/:id/browser-error`.
 
@@ -58,3 +58,11 @@ SubmitOrder locks the run and changes inventory/order/outbox in one transaction.
 Retries wait250ms and500ms; recover mode succeeds on attempt3, exhaust mode emits one dead letter. An atomic Lua operation adds the terminal-error outbox with the dead letter. A separate drain retries SDK delivery using a stable event ID and original consumer context; business completion/ACK never depends on Sentry availability.
 
 Run `make test` for contracts; `make verify` adds live DB/cache/Stream invariants. The Go integration harness starts disposable isolated PostgreSQL/Redis containers and verifies rollback, duplicate RPC/publication and immutable terminal states.
+
+## Bounded PostgreSQL contention
+
+`postgres-lock-timeout` is an additional allowlisted scenario in web, catalog, and fulfillment validation. Public run/error response fields and the protobuf contract are unchanged. It bypasses Redis. Within the active catalog business span, one PostgreSQL connection holds an exclusive lock on `catalog.products`; a second performs the ordinary product read with a 750 ms session-local lock timeout.
+
+Capture the resulting PostgreSQL exception once in catalog and return `failureService: catalog`, `errorCode: POSTGRES_LOCK_TIMEOUT`, and its event ID. The run becomes `failed` before order submission. Release the locker in `finally`; a two-second idle transaction timeout bounds a crashed connection's lock. Never expose raw SQL or arbitrary fault durations in the UI. PostgreSQL connection `application_name` carries `w:<trace-id>:<span-id>` from `catalog.product_query`, the business span enclosing those SQL statements, for native-log correlation. The SDK error is captured by the parent `catalog.lookup` span in the same trace.
+
+Verify no order/outbox/inventory effect, one originating error, the failed SQL span, native lock/error records, and a succeeding healthy request immediately afterward. The four synthetic language/browser errors retain their original contracts in More examples.

@@ -50,6 +50,28 @@
       "timeout": "1s",
       "send_batch_size": 256,
       "send_batch_max_size": 512
+    },
+    "transform/log-priority": {
+      "error_mode": "ignore",
+      "log_statements": [
+        {
+          "context": "log",
+          "statements": [
+            "set(attributes[\"workshop.sampling.priority\"], 100) where resource.attributes[\"service.name\"] != \"postgres\" and resource.attributes[\"service.name\"] != \"redis\"",
+            "set(attributes[\"workshop.sampling.priority\"], 100) where severity_number >= SEVERITY_NUMBER_WARN",
+            "set(attributes[\"workshop.sampling.priority\"], 100) where resource.attributes[\"service.name\"] == \"postgres\" and (attributes[\"workshop.infra.evidence\"] == \"slow_query\" or attributes[\"workshop.infra.evidence\"] == \"lock_wait\" or attributes[\"db.postgresql.sqlstate\"] == \"55P03\")"
+          ]
+        }
+      ]
+    },
+    "probabilistic_sampler/infra-logs": {
+      "mode": "hash_seed",
+      "hash_seed": 20261013,
+      "sampling_percentage": "${env:OTEL_INFRA_LOG_SAMPLE_PERCENT}",
+      "attribute_source": "record",
+      "from_attribute": "log.record_id",
+      "sampling_priority": "workshop.sampling.priority",
+      "fail_closed": false
     }
   },
   "service": {
@@ -78,6 +100,8 @@
         "processors": [
           "memory_limiter",
           "attributes/redact",
+          "transform/log-priority",
+          "probabilistic_sampler/infra-logs",
           "batch"
         ],
         "exporters": [

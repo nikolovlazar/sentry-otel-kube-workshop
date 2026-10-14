@@ -2,6 +2,7 @@ export const scenarios = [
   "full-journey",
   "cache-miss-hit",
   "slow-postgres",
+  "postgres-lock-timeout",
   "python-error",
   "go-error",
   "async-worker",

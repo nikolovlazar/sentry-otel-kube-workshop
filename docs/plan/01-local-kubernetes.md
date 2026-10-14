@@ -44,3 +44,9 @@ Readiness, allowed/denied NetworkPolicy probes, repeated deploy and wrong-contex
 7. Run `make down` to stop only the recorded localhost forward. `make cluster-delete` is the separate destructive command scoped to this named cluster.
 
 The external entrypoint is `http://localhost:8080` through a loopback-only port-forward to Envoy's ClusterIP Service. PostgreSQL/Redis use `standard` PVCs. Agent checkpoint files and unsent gateway queued batches survive collector pod restarts. Persistence does not retry failed Sentry HTTP deliveries in the pinned main exporter; see [retry limits](04-collector-and-sentry.md#retry-and-persistence-limits). Application pods do not have Kubernetes API credentials.
+
+## Storage log settings for the revised workshop
+
+PostgreSQL keeps native stderr output and emits statements above 500 ms, lock waits after 250 ms, and application-name/PID/SQLSTATE metadata; bind-parameter logging is disabled. Redis keeps native stdout logging and a 100 ms busy-reply threshold for the finite approximately 400 ms read-only exercise. Neither change adds an infrastructure telemetry SDK. Application client spans and native server logs remain distinct.
+
+Deployment supplies `OTEL_INFRA_LOG_SAMPLE_PERCENT` to the existing gateway, defaulting to 5 and validating 5/10/100. The sampling exercise changes only the gateway's dedicated Secret/Deployment temporarily and restores the prior value; ordinary `make deploy` reapplies ignored `.env` configuration. Run `make verify-collector` before accepting new parsing/sampling config, then `make verify-infra` against actual native logs. Existing PVCs, dedicated context, egress restrictions, and runtime allocation are preserved.

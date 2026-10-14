@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { context, trace } from "@opentelemetry/api";
 import { baggageAttributes } from "./workflow-context";
+
 export function log(
   body: string,
   severity = "INFO",

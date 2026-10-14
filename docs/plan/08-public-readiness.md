@@ -52,3 +52,9 @@ No public GitHub repository is created in this scope.
 5. Commit the local repository with the MIT license and documentation. No remote is configured and no GitHub repository is created.
 
 The README distinguishes supported local behavior from future hosted deployment. The collector's limited token and source-map upload token have separate ownership. Browser ingest keys are public by design, but examples remain placeholders. The runtime uses synthetic data and never sends external notifications.
+
+## Infrastructure revision audit
+
+The public example exposes only `OTEL_INFRA_LOG_SAMPLE_PERCENT=5` and the allowed 5/10/100 choices; no new credentials are required. Native PostgreSQL correlation uses validated trace/span IDs in `application_name`, not payloads, user identity, or authentication material. Bind-parameter logging remains disabled. Fixed synthetic SQL/Redis exercise inputs are not arbitrary UI controls.
+
+Keep `.local/verification/infra-sampling.json`, `redis-busy.json`, and `infra-live.json` ignored. Public reports may summarize observed counts, authentic resource labels, and fault/recovery behavior, while exact current identifiers remain in local evidence. Distinguish initial baseline checks from new revision acceptance, and record any missing rehearsal or telemetry evidence explicitly. Preserve pre-existing uncommitted work and editor lock files during this revision.

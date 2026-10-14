@@ -2,7 +2,7 @@
 
 ## Decisions
 
-OTel owns backend tracing and sampling. Sentry owns SDK error capture. W3C TraceContext+Baggage cross HTTP/gRPC/Redis; browser propagateTraceparent is enabled.
+OTel owns backend tracing and sampling. Keep application traces and logs at 100%, with health exclusions. Sentry owns SDK error capture. W3C TraceContext+Baggage cross HTTP/gRPC/Redis; browser propagateTraceparent is enabled.
 
 ## Steps
 
@@ -61,3 +61,19 @@ Validated workflow metadata also travels in W3C baggage. Small span processors c
 Next.js drops server spans for `/health/live` and `/health/ready` at sampling time. Locally unsampled parents also keep their framework descendants unsampled, so excluding only the named route cannot leave orphan background spans. Normal workshop requests retain 100% sampling, including incoming unsampled remote carriers. Health responses and Kubernetes probes remain enabled. Python already excludes its health routes; Go and worker dependency/queue housekeeping remain untraced.
 
 Run `npm --prefix apps/web test` for probe/descendant and normal-workflow regression tests. After rebuild/deployment, verify live readiness, observe a quiet idle interval and trigger a normal distributed workflow. The private follow-up record is `.local/verification/health-checks.json`.
+
+## Native PostgreSQL and Redis logs
+
+Application JSON logs continue through their sole stdout path at 100% retention. The same agent parses native PostgreSQL and Redis container output, preserving `service.name`, original pod identity, timestamps, severities, and component fields. Collector logs remain excluded.
+
+PostgreSQL logs to stderr with slow-statement threshold 500 ms and lock-wait threshold 250 ms. Its prefix includes application name, process ID, and SQLSTATE; bind-parameter logging is disabled. Catalog supplies `w:<trace-id>:<span-id>` as connection `application_name` while `catalog.product_query` is active. Only validated identifiers are converted to native OTLP trace/span fields. These records identify the actual PostgreSQL service/pod and link to the enclosing business span; they do not claim the database server emitted a new trace span.
+
+Redis native server records contain no OTLP trace/span context unless the server supplies it. The collector fixtures verify empty native context. Sentry may display a standalone trace ID on ingestion even though `span_id` is absent; that ID does not establish a link to an application trace. Use `resource.service.name:redis`, pod identity, and incident timestamps to investigate them. Application Redis client spans and Redis native logs describe different layers.
+
+## Infrastructure-only log sampling
+
+The gateway probabilistically retains routine PostgreSQL and Redis logs at `OTEL_INFRA_LOG_SAMPLE_PERCENT=5`, accepting only 5, 10, or 100. Hash a unique per-record identifier assigned before agent export so retry delivery keeps the same decision. Explicit sampling priority 100 preserves application records, infrastructure warnings/errors, recognized PostgreSQL slow-query/lock-wait evidence, and components outside the sampled pair. Both exporter configurations apply identical log processing.
+
+The percentage applies to routine infrastructure logs. Retained warnings and incidents increase total retention. Application trace sampling remains 100%; health checks remain excluded. Tail sampling chooses traces and is not this log policy. No trace tail sampler is introduced.
+
+Run `make verify-collector` for parsing/context/sampler fixtures, `make verify-infra` for native Sentry evidence, and `make demo-infra-sampling` for a finite 2,000-record 100%/5% comparison. New live acceptance is recorded separately from initial checked milestones.

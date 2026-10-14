@@ -42,7 +42,17 @@ def config():
     result.setdefault('DOCKER_CONTEXT','colima')
     result.setdefault('WORKSHOP_ENVIRONMENT','workshop-local')
     result.setdefault('WORKSHOP_SESSION_ID','local-workshop')
+    result.setdefault('WORKSHOP_VERIFICATION_TIMEOUT_SECONDS',os.environ.get('WORKSHOP_VERIFICATION_TIMEOUT_SECONDS','120'))
+    try:
+        verification_timeout=int(result['WORKSHOP_VERIFICATION_TIMEOUT_SECONDS'])
+    except ValueError:
+        raise SystemExit('WORKSHOP_VERIFICATION_TIMEOUT_SECONDS must be an integer from 30 to 600.')
+    if not 30 <= verification_timeout <= 600:
+        raise SystemExit('WORKSHOP_VERIFICATION_TIMEOUT_SECONDS must be an integer from 30 to 600.')
     result.setdefault('SENTRY_EXPORTER_MODE','sentry')
+    result.setdefault('OTEL_INFRA_LOG_SAMPLE_PERCENT',os.environ.get('OTEL_INFRA_LOG_SAMPLE_PERCENT','5'))
+    if result['OTEL_INFRA_LOG_SAMPLE_PERCENT'] not in {'5','10','100'}:
+        raise SystemExit('OTEL_INFRA_LOG_SAMPLE_PERCENT must be 5, 10 or 100.')
     revision=subprocess.run(['git','rev-parse','--verify','HEAD'],cwd=ROOT,text=True,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,check=False)
     version=revision.stdout.strip() if revision.returncode==0 else 'dev-uncommitted'
     result.setdefault('SERVICE_VERSION',os.environ.get('SERVICE_VERSION',version))
@@ -130,6 +140,7 @@ def secrets():
     data['FULFILLMENT_DATABASE_URL']='postgresql://fulfillment:'+quote(CFG['FULFILLMENT_DB_PASSWORD'],safe='')+'@postgres:5432/workshop'
     data['REDIS_URL']='redis://:'+quote(CFG['REDIS_PASSWORD'],safe='')+'@redis:6379/0'
     gateway={k:v for k,v in data.items() if k.startswith('SENTRY_') or k.startswith('WORKSHOP_') or k=='SERVICE_VERSION'}
+    gateway['OTEL_INFRA_LOG_SAMPLE_PERCENT']=CFG['OTEL_INFRA_LOG_SAMPLE_PERCENT']
     for suffix in ['WEB','CATALOG','FULFILLMENT','WORKER','INFRASTRUCTURE']:
         dsn=urlparse(CFG['SENTRY_DSN_'+suffix]);project=dsn.path.strip('/')
         if not dsn.username or not project or dsn.scheme!='https':raise SystemExit('Invalid HTTPS Sentry DSN for '+suffix)
@@ -142,21 +153,21 @@ def secrets():
     sqlquote=lambda v:"'"+v.replace("'","''")+"'"
     init='CREATE ROLE catalog LOGIN PASSWORD '+sqlquote(CFG['CATALOG_DB_PASSWORD'])+';\nCREATE ROLE fulfillment LOGIN PASSWORD '+sqlquote(CFG['FULFILLMENT_DB_PASSWORD'])+';\nCREATE SCHEMA catalog AUTHORIZATION catalog;\nCREATE SCHEMA fulfillment AUTHORIZATION fulfillment;\nREVOKE CREATE ON DATABASE workshop FROM catalog, fulfillment;\n'
     items=[secret('workshop-secrets',APP,data),secret('workshop-secrets',OBS,gateway),secret('postgres-init',APP,{'010-roles.sql':init})]
-    path=GENERATED/'secrets.yaml';private_write(path,json.dumps({'apiVersion':'v1','kind':'List','items':items},indent=2));apply_file(path)
+    path=GENERATED/'secrets.json';private_write(path,json.dumps({'apiVersion':'v1','kind':'List','items':items},indent=2));apply_file(path)
     collector_env={**gateway,'NODE_NAME':'validation-node'}
     private_write(GENERATED/'collector.env',''.join(k+'='+v+'\n' for k,v in collector_env.items()))
 
 def collector_config():
     require(['WORKSHOP_SESSION_ID','WORKSHOP_ENVIRONMENT'])
-    for name,filename in [('otel-agent','agent.yaml'),('otel-gateway','gateway-'+CFG['SENTRY_EXPORTER_MODE']+'.yaml')]:
+    for name,filename in [('otel-agent','agent.json'),('otel-gateway','gateway-'+CFG['SENTRY_EXPORTER_MODE']+'.json')]:
         content=(ROOT/'infra/collectors'/filename).read_text()
-        obj={'apiVersion':'v1','kind':'ConfigMap','metadata':{'name':name+'-config','namespace':OBS},'data':{'config.yaml':content}}
+        obj={'apiVersion':'v1','kind':'ConfigMap','metadata':{'name':name+'-config','namespace':OBS},'data':{'config.json':content}}
         apply_obj(obj)
 
 def validate_config():
     if not (GENERATED/'collector.env').exists():raise SystemExit('Run make configure before validating collector configs.')
     image=next(o for o in json.loads((ROOT/'infra/kubernetes/collectors.json').read_text())['items'] if o['kind']=='DaemonSet')['spec']['template']['spec']['containers'][0]['image']
-    for name in ['agent.yaml','gateway-'+CFG['SENTRY_EXPORTER_MODE']+'.yaml']:
+    for name in ['agent.json','gateway-'+CFG['SENTRY_EXPORTER_MODE']+'.json']:
         run(['docker','run','--rm','--tmpfs','/var/lib/otelcol:mode=777','--env-file',GENERATED/'collector.env','-v',str(ROOT/'infra/collectors')+':/config:ro',image,'validate','--config=/config/'+name])
         print(name+': valid')
 

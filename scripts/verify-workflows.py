@@ -46,6 +46,7 @@ def main():
         ("full-journey", "success", "completed", True),
         ("cache-miss-hit", "success", "completed", True),
         ("slow-postgres", "success", "completed", True),
+        ("postgres-lock-timeout", "success", "failed", False),
         ("python-error", "success", "failed", False),
         ("go-error", "success", "failed", False),
         ("next-error", "success", "failed", False),
@@ -66,6 +67,10 @@ def main():
         if expected in ["failed", "dead_lettered"]:
             assert re.fullmatch("[a-f0-9]{32}", run["errorEventId"]), (scenario, "missing SDK event ID")
         if scenario == "slow-postgres": assert duration >= 1.2
+        if scenario == "postgres-lock-timeout":
+            assert duration >= .75
+            assert run["failureService"] == "catalog" and run["errorCode"] == "POSTGRES_LOCK_TIMEOUT"
+            assert sql("SELECT count(*) FROM pg_locks WHERE relation='catalog.products'::regclass AND mode='AccessExclusiveLock'") == "0"
         if scenario == "async-worker": assert run["attempts"] == 3
         if submitted:
             outbox = sql("SELECT (published_at IS NOT NULL)::text FROM fulfillment.outbox WHERE run_id='" + run["runId"] + "'")
@@ -90,6 +95,6 @@ def main():
         evidence["runs"].append({**run, "durationSeconds": round(duration, 3), "orderCount": count})
         w.private_write(w.LOCAL / "verification/workflows.json", json.dumps(evidence, indent=2))
         print(scenario + "/" + mode + ": " + expected + "; database/queue invariants passed", flush=True)
-    print("Eight API permutations passed. Real browser exception/correlation is checked separately through the UI.")
+    print("Nine API permutations passed. Real browser exception/correlation is checked separately through the UI.")
 
 if __name__ == "__main__": main()

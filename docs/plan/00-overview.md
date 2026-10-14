@@ -2,7 +2,7 @@
 
 ## Decisions
 
-Create a local public-ready repository, no GitHub publishing. Fully verify local Kubernetes, browser/server traces, JSON stdout logs and SDK errors in Sentry.
+Create a local public-ready repository, no GitHub publishing. Fully verify local Kubernetes, browser/server traces, JSON application logs, native PostgreSQL/Redis logs, and SDK errors in Sentry. Keep application traces/logs at 100%; sample routine infrastructure logs at 5% and retain incident evidence.
 
 ## Steps
 
@@ -34,6 +34,7 @@ flowchart LR
   Redis --> Worker[Node notification worker]
   Worker -->|gRPC result| Fulfillment
   Web & Catalog & Fulfillment & Worker -->|Traces / stdout logs| Agent[Collector agent]
+  Postgres & Redis -->|Native stdout logs| Agent
   Agent --> Gateway[Collector gateway]
   Gateway -->|OTLP| Sentry
   Web & Catalog & Fulfillment & Worker -->|SDK errors| Sentry
@@ -71,3 +72,11 @@ The collector cannot replace SDK exception capture. The application never waits 
 ## Files to inspect
 
 The nine numbered files in this directory follow the implementation order. Each references runnable commands, prerequisites and acceptance criteria. The source tree keeps protocol definitions in `proto`, collection and networking in `infra`, operational commands in `scripts`, and language-specific code under `apps`/`services`.
+
+## Workshop revision — native infrastructure context
+
+The 60-minute delivery allocates 15 minutes to Ben's OpenTelemetry/Sentry integration introduction, 35 minutes to the five primary demo cards, and 10 minutes to questions. Synthetic language failures remain available in collapsed More examples. See the [presenter flow](../workshop/presenter-guide.md).
+
+Revision order: native PostgreSQL/Redis parsing and infrastructure-only probabilistic log sampling; bounded PostgreSQL contention with native context; focused UI and exercises; live Sentry acceptance and timed rehearsal. Preserve existing exporter routing, SDK ownership, dependency pins, health exclusions, and source-map uploads.
+
+Revision completion requires `make verify-collector`, `make verify`, `make verify-sentry`, and `make verify-infra`, finite sampling/Redis exercises, recovery without data loss, and fresh evidence in ignored `.local/verification`. The checked baseline milestones above describe the initial implementation; new revision acceptance is recorded separately in [verification](../verification.md).

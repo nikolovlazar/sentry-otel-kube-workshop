@@ -14,3 +14,6 @@ test-results/
 playwright-report/
 .DS_Store
 *.tsbuildinfo
+
+# Editor lock files
+.#*

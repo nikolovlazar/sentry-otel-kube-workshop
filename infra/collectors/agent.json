@@ -1,0 +1,447 @@
+{
+  "extensions": {
+    "health_check": {
+      "endpoint": "0.0.0.0:13133"
+    },
+    "file_storage": {
+      "directory": "/var/lib/otelcol",
+      "create_directory": true
+    }
+  },
+  "receivers": {
+    "otlp": {
+      "protocols": {
+        "grpc": {
+          "endpoint": "0.0.0.0:4317"
+        },
+        "http": {
+          "endpoint": "0.0.0.0:4318"
+        }
+      }
+    },
+    "filelog": {
+      "include": [
+        "/var/log/pods/sentry-otel-workshop_*/*/*.log"
+      ],
+      "include_file_path": true,
+      "start_at": "end",
+      "storage": "file_storage",
+      "operators": [
+        {
+          "type": "container",
+          "id": "container",
+          "add_metadata_from_filepath": true
+        },
+        {
+          "type": "router",
+          "id": "format",
+          "routes": [
+            {
+              "expr": "resource[\"k8s.container.name\"] == \"postgres\" and body matches \"^[0-9]{4}-[0-9]{2}-[0-9]{2}[^|]+[|][0-9]+[|]\"",
+              "output": "postgres"
+            },
+            {
+              "expr": "resource[\"k8s.container.name\"] == \"redis\" and body matches \"^[0-9]+:[A-Za-z] \"",
+              "output": "redis"
+            },
+            {
+              "expr": "body matches \"^\\\\{\"",
+              "output": "json"
+            }
+          ],
+          "default": "plain"
+        },
+        {
+          "type": "json_parser",
+          "id": "json",
+          "parse_to": "attributes"
+        },
+        {
+          "type": "move",
+          "from": "attributes.body",
+          "to": "body",
+          "if": "attributes.body != nil"
+        },
+        {
+          "type": "severity_parser",
+          "parse_from": "attributes.severity",
+          "if": "attributes.severity != nil"
+        },
+        {
+          "type": "add",
+          "id": "sampled-flag",
+          "field": "attributes.trace_flags",
+          "value": "01",
+          "if": "attributes.trace_flags == 1 or attributes.trace_flags == \"1\""
+        },
+        {
+          "type": "add",
+          "id": "unsampled-flag",
+          "field": "attributes.trace_flags",
+          "value": "00",
+          "if": "attributes.trace_flags == 0 or attributes.trace_flags == \"0\" or attributes.trace_flags == nil or attributes.trace_flags == \"\""
+        },
+        {
+          "type": "trace_parser",
+          "trace_id": {
+            "parse_from": "attributes.trace_id"
+          },
+          "span_id": {
+            "parse_from": "attributes.span_id"
+          },
+          "trace_flags": {
+            "parse_from": "attributes.trace_flags"
+          },
+          "if": "attributes.trace_id != nil and attributes.trace_id != \"\"",
+          "output": "done"
+        },
+        {
+          "type": "add",
+          "id": "plain",
+          "field": "attributes.log.source",
+          "value": "container-stdout",
+          "output": "done"
+        },
+        {
+          "type": "regex_parser",
+          "id": "postgres",
+          "regex": "^(?P<pg_timestamp>[^|]+)\\|(?P<pg_pid>[0-9]+)\\|(?P<pg_application_name>[^|]*)\\|(?P<pg_sqlstate>[0-9A-Z]{5})\\|(?P<pg_severity>[A-Z0-9]+):\\s*(?P<pg_message>.*)$",
+          "timestamp": {
+            "parse_from": "attributes.pg_timestamp",
+            "layout_type": "gotime",
+            "layout": "2006-01-02 15:04:05.999 MST",
+            "location": "UTC"
+          },
+          "severity": {
+            "parse_from": "attributes.pg_severity",
+            "preset": "none",
+            "mapping": {
+              "debug": [
+                "DEBUG",
+                "DEBUG1",
+                "DEBUG2",
+                "DEBUG3",
+                "DEBUG4",
+                "DEBUG5"
+              ],
+              "info": [
+                "LOG",
+                "INFO",
+                "NOTICE",
+                "DETAIL",
+                "STATEMENT",
+                "CONTEXT",
+                "HINT"
+              ],
+              "warn": "WARNING",
+              "error": "ERROR",
+              "fatal": [
+                "FATAL",
+                "PANIC"
+              ]
+            }
+          }
+        },
+        {
+          "type": "move",
+          "from": "attributes.pg_pid",
+          "to": "attributes[\"process.pid\"]",
+          "if": "attributes.pg_pid != nil"
+        },
+        {
+          "type": "move",
+          "from": "attributes.pg_application_name",
+          "to": "attributes[\"db.postgresql.application_name\"]",
+          "if": "attributes.pg_application_name != nil"
+        },
+        {
+          "type": "move",
+          "from": "attributes.pg_sqlstate",
+          "to": "attributes[\"db.postgresql.sqlstate\"]",
+          "if": "attributes.pg_sqlstate != nil"
+        },
+        {
+          "type": "move",
+          "from": "attributes.pg_severity",
+          "to": "attributes[\"db.postgresql.severity\"]",
+          "if": "attributes.pg_severity != nil"
+        },
+        {
+          "type": "move",
+          "from": "attributes.pg_message",
+          "to": "body",
+          "if": "attributes.pg_message != nil"
+        },
+        {
+          "type": "remove",
+          "field": "attributes.pg_timestamp",
+          "if": "attributes.pg_timestamp != nil"
+        },
+        {
+          "type": "regex_parser",
+          "id": "postgres-context",
+          "parse_from": "attributes[\"db.postgresql.application_name\"]",
+          "regex": "^w:(?P<trace_id>[0-9a-f]{32}):(?P<span_id>[0-9a-f]{16})$",
+          "if": "attributes[\"db.postgresql.application_name\"] != nil and attributes[\"db.postgresql.application_name\"] matches \"^w:[0-9a-f]{32}:[0-9a-f]{16}$\" and attributes[\"db.postgresql.application_name\"] not matches \"^w:0{32}:\" and attributes[\"db.postgresql.application_name\"] not matches \":0{16}$\""
+        },
+        {
+          "type": "trace_parser",
+          "id": "postgres-trace",
+          "trace_id": {
+            "parse_from": "attributes.trace_id"
+          },
+          "span_id": {
+            "parse_from": "attributes.span_id"
+          },
+          "if": "attributes.trace_id != nil and attributes.trace_id != \"\""
+        },
+        {
+          "type": "add",
+          "id": "postgres-source",
+          "field": "attributes[\"log.source\"]",
+          "value": "postgres",
+          "output": "done"
+        },
+        {
+          "type": "regex_parser",
+          "id": "redis",
+          "regex": "^(?P<redis_pid>[0-9]+):(?P<redis_role>[A-Za-z]) (?P<redis_timestamp>[0-9]{2} [A-Za-z]{3} [0-9]{4} [0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]+) (?P<redis_severity>[.*#-]) (?P<redis_message>.*)$",
+          "timestamp": {
+            "parse_from": "attributes.redis_timestamp",
+            "layout_type": "gotime",
+            "layout": "02 Jan 2006 15:04:05.999",
+            "location": "UTC"
+          },
+          "severity": {
+            "parse_from": "attributes.redis_severity",
+            "preset": "none",
+            "overwrite_text": true,
+            "mapping": {
+              "debug": [
+                ".",
+                "-"
+              ],
+              "info": "*",
+              "warn": "#"
+            }
+          }
+        },
+        {
+          "type": "move",
+          "from": "attributes.redis_pid",
+          "to": "attributes[\"process.pid\"]",
+          "if": "attributes.redis_pid != nil"
+        },
+        {
+          "type": "move",
+          "from": "attributes.redis_role",
+          "to": "attributes[\"redis.role\"]",
+          "if": "attributes.redis_role != nil"
+        },
+        {
+          "type": "move",
+          "from": "attributes.redis_severity",
+          "to": "attributes[\"redis.log.level\"]",
+          "if": "attributes.redis_severity != nil"
+        },
+        {
+          "type": "move",
+          "from": "attributes.redis_message",
+          "to": "body",
+          "if": "attributes.redis_message != nil"
+        },
+        {
+          "type": "remove",
+          "field": "attributes.redis_timestamp",
+          "if": "attributes.redis_timestamp != nil"
+        },
+        {
+          "type": "add",
+          "id": "redis-source",
+          "field": "attributes[\"log.source\"]",
+          "value": "redis",
+          "output": "done"
+        },
+        {
+          "type": "add",
+          "id": "done",
+          "field": "attributes.telemetry.source",
+          "value": "filelog"
+        }
+      ]
+    }
+  },
+  "processors": {
+    "memory_limiter": {
+      "check_interval": "1s",
+      "limit_mib": 192,
+      "spike_limit_mib": 48
+    },
+    "k8sattributes": {
+      "auth_type": "serviceAccount",
+      "filter": {
+        "namespace": "sentry-otel-workshop",
+        "node_from_env_var": "NODE_NAME"
+      },
+      "extract": {
+        "metadata": [
+          "k8s.namespace.name",
+          "k8s.pod.name",
+          "k8s.pod.uid",
+          "k8s.node.name",
+          "k8s.deployment.name",
+          "k8s.container.name"
+        ],
+        "labels": [
+          {
+            "tag_name": "service.name",
+            "key": "app.kubernetes.io/name",
+            "from": "pod"
+          }
+        ]
+      },
+      "pod_association": [
+        {
+          "sources": [
+            {
+              "from": "resource_attribute",
+              "name": "k8s.pod.uid"
+            }
+          ]
+        },
+        {
+          "sources": [
+            {
+              "from": "connection"
+            }
+          ]
+        }
+      ]
+    },
+    "resource": {
+      "attributes": [
+        {
+          "key": "k8s.cluster.name",
+          "value": "sentry-otel-workshop",
+          "action": "upsert"
+        },
+        {
+          "key": "deployment.environment.name",
+          "value": "${env:WORKSHOP_ENVIRONMENT}",
+          "action": "upsert"
+        },
+        {
+          "key": "workshop.session_id",
+          "value": "${env:WORKSHOP_SESSION_ID}",
+          "action": "upsert"
+        },
+        {
+          "key": "service.namespace",
+          "value": "sentry-otel-workshop",
+          "action": "insert"
+        },
+        {
+          "key": "service.version",
+          "value": "${env:SERVICE_VERSION}",
+          "action": "insert"
+        }
+      ]
+    },
+    "transform/names": {
+      "error_mode": "ignore",
+      "trace_statements": [
+        {
+          "context": "resource",
+          "statements": [
+            "set(attributes[\"service.name\"], \"edge\") where attributes[\"service.name\"] == \"envoy\""
+          ]
+        }
+      ],
+      "log_statements": [
+        {
+          "context": "resource",
+          "statements": [
+            "set(attributes[\"service.name\"], \"edge\") where attributes[\"service.name\"] == \"envoy\""
+          ]
+        }
+      ]
+    },
+    "batch": {
+      "timeout": "1s",
+      "send_batch_size": 256,
+      "send_batch_max_size": 512
+    },
+    "transform/infra-logs": {
+      "error_mode": "ignore",
+      "log_statements": [
+        {
+          "context": "log",
+          "statements": [
+            "set(attributes[\"log.record_id\"], UUID()) where attributes[\"log.record_id\"] == nil and (resource.attributes[\"service.name\"] == \"postgres\" or resource.attributes[\"service.name\"] == \"redis\")",
+            "set(attributes[\"workshop.infra.evidence\"], \"slow_query\") where resource.attributes[\"service.name\"] == \"postgres\" and IsMatch(body, \"^duration: [0-9.]+ ms\")",
+            "set(attributes[\"workshop.infra.evidence\"], \"lock_wait\") where resource.attributes[\"service.name\"] == \"postgres\" and (attributes[\"db.postgresql.sqlstate\"] == \"55P03\" or IsMatch(body, \"^process [0-9]+ (still waiting for|acquired)\"))"
+          ]
+        }
+      ]
+    }
+  },
+  "exporters": {
+    "otlp/gateway": {
+      "endpoint": "otel-gateway.observability.svc.cluster.local:4317",
+      "tls": {
+        "insecure": true
+      },
+      "sending_queue": {
+        "enabled": true,
+        "num_consumers": 2,
+        "queue_size": 1000
+      },
+      "retry_on_failure": {
+        "enabled": true,
+        "initial_interval": "1s",
+        "max_interval": "10s",
+        "max_elapsed_time": "60s"
+      }
+    }
+  },
+  "service": {
+    "extensions": [
+      "health_check",
+      "file_storage"
+    ],
+    "pipelines": {
+      "traces": {
+        "receivers": [
+          "otlp"
+        ],
+        "processors": [
+          "memory_limiter",
+          "k8sattributes",
+          "resource",
+          "transform/names",
+          "batch"
+        ],
+        "exporters": [
+          "otlp/gateway"
+        ]
+      },
+      "logs": {
+        "receivers": [
+          "otlp",
+          "filelog"
+        ],
+        "processors": [
+          "memory_limiter",
+          "k8sattributes",
+          "resource",
+          "transform/names",
+          "transform/infra-logs",
+          "batch"
+        ],
+        "exporters": [
+          "otlp/gateway"
+        ]
+      }
+    }
+  }
+}

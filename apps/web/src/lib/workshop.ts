@@ -158,7 +158,7 @@ export async function startRun(input: {
               run,
               input.scenario === "cache-miss-hit"
                 ? "fresh"
-                : ["slow-postgres", "python-error"].includes(input.scenario)
+                : ["slow-postgres", "postgres-lock-timeout", "python-error"].includes(input.scenario)
                   ? "bypass"
                   : "default",
             );
