@@ -19,6 +19,7 @@ flowchart LR
   W & C & F & N -->|OTLP traces + JSON stdout| A[Collector node agent]
   A --> G[Collector gateway]
   G -->|OTLP traces and logs| S[Sentry]
+  W -->|Browser envelopes via /monitoring| S
   W & C & F & N -->|SDK errors| S
 ```
 

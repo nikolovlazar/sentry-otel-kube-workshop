@@ -1,6 +1,8 @@
 # Control centre
 
-Next.js is the browser UI and BFF. It initializes its own OTel provider before Sentry, exports server spans through the in-cluster collector, and sends Sentry SDK errors directly. Browser configuration comes from `/api/public-config` at runtime; image builds contain no DSNs or upload tokens.
+Next.js is the browser UI and BFF. It initializes its own OTel provider before Sentry, exports server spans through the in-cluster collector, and sends server SDK errors directly. Browser configuration comes from `/api/public-config` at runtime; image builds contain no DSNs or upload tokens. Browser Sentry envelopes use the SDK's `/monitoring` tunnel on the Next.js server to avoid blocked requests to Sentry's ingest domain. The SDK derives the upstream organization, project, and region from the runtime DSN.
+
+To check browser delivery, reload the page after rebuilding the web image and look for successful `POST /monitoring?o=...&p=...&r=...` requests. Some filter lists also block this conventional tunnel path: `net::ERR_BLOCKED_BY_CLIENT` on `/monitoring` requires allowing telemetry for localhost in the browser blocker. Confirm both `workshop.action ...` (`ui.action`) and its browser HTTP child in the workflow trace. Page loads and Web Vitals belong to the page-load trace; LCP, CLS, and INP can finalize on interaction or when the page becomes hidden. Allow up to five minutes for Sentry indexing before concluding that accepted envelopes are missing.
 
 The BFF exposes `POST /api/runs`, `GET /api/runs?sessionId=...`, `GET /api/runs/:runId`, and `POST /api/runs/:runId/browser-error`. Readiness checks catalog HTTP and fulfillment gRPC. Origin errors from Python/Go are recorded using their event IDs without capturing the same error again in the BFF.
 
