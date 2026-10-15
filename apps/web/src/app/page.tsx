@@ -30,13 +30,13 @@ const cards: {
     lesson: "Distributed trace",
   },
   {
-    id: "cache-miss-hit",
+    id: "async-worker",
     number: "02",
-    title: "Cache miss → hit",
+    title: "Background job",
     description:
-      "Fetch the same product twice. Compare the database query with a Redis cache hit.",
-    path: "Catalog → Redis + PostgreSQL",
-    lesson: "Cache visibility",
+      "Watch durable queue delivery, retry attempts, and a final success or dead letter.",
+    path: "Fulfillment → Redis Streams → Worker",
+    lesson: "Trace across a queue",
   },
   {
     id: "slow-postgres",
@@ -58,6 +58,15 @@ const cards: {
     tone: "error",
   },
   {
+    id: "cache-miss-hit",
+    number: "05",
+    title: "Cache miss → hit",
+    description:
+      "Fetch the same product twice. Compare the database query with a Redis cache hit.",
+    path: "Catalog → Redis + PostgreSQL",
+    lesson: "Cache visibility",
+  },
+  {
     id: "python-error",
     number: "06",
     title: "Python exception",
@@ -76,15 +85,6 @@ const cards: {
     path: "Catalog → Fulfillment · gRPC failure",
     lesson: "Error at its origin",
     tone: "error",
-  },
-  {
-    id: "async-worker",
-    number: "05",
-    title: "Background job",
-    description:
-      "Watch durable queue delivery, retry attempts, and a final success or dead letter.",
-    path: "Fulfillment → Redis Streams → Worker",
-    lesson: "Trace across a queue",
   },
   {
     id: "next-error",
@@ -110,10 +110,10 @@ const cards: {
 const primaryCards = cards.filter((card) =>
   [
     "full-journey",
-    "cache-miss-hit",
+    "async-worker",
     "slow-postgres",
     "postgres-lock-timeout",
-    "async-worker",
+    "cache-miss-hit",
   ].includes(card.id),
 );
 const additionalCards = cards.filter((card) => !primaryCards.includes(card));

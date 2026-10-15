@@ -2,7 +2,7 @@
 
 ## Decisions
 
-Five primary cards tell the timed demo's story: Complete journey, Cache miss → hit, Slow database, Database contention, and Background job. The four synthetic Python, Go, Next.js, and browser exceptions remain available in collapsed More examples. Background job retains success, recover, and exhaust controls; exhaust remains its default.
+Five primary cards follow the presentation order: Complete journey, Background job, Slow database, Database contention, and Cache miss → hit. Find affected requests and aggregate analysis follow in Sentry. The four synthetic Python, Go, Next.js, and browser exceptions remain available in collapsed More examples. Background job retains success, recover, and exhaust controls; exhaust remains its default.
 
 ## Ordered steps and prerequisites
 
